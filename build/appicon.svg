@@ -1,0 +1,128 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Soft Apple Dock Drop Shadow for White Porcelain Tile -->
+    <filter id="dockShadow" x="30" y="42" width="964" height="964" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#1e354d" flood-opacity="0.16" />
+    </filter>
+
+    <!-- Deeper Ocean Glass Elevation Shadow -->
+    <filter id="wingShadow" x="180" y="180" width="664" height="664" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#0d3c73" flood-opacity="0.22" />
+    </filter>
+
+    <!-- Deeper Glass Orb Shadow -->
+    <filter id="orbShadow" x="400" y="510" width="224" height="224" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0a3466" flood-opacity="0.26" />
+    </filter>
+
+    <!-- Main Apple Squircle Clip (824x824 centered) -->
+    <clipPath id="squircleClip">
+      <rect x="100" y="100" width="824" height="824" rx="186" />
+    </clipPath>
+
+    <!-- Unchanged Porcelain White Base Gradient -->
+    <linearGradient id="whiteBase" x1="200" y1="100" x2="824" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="55%" stop-color="#fafcfe" />
+      <stop offset="100%" stop-color="#edf3f9" />
+    </linearGradient>
+
+    <!-- Whisper-Light Top-Right Sky Breath -->
+    <radialGradient id="topMist" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(790 210) rotate(135) scale(640 560)">
+      <stop offset="0%" stop-color="#d8ecfc" stop-opacity="0.45" />
+      <stop offset="55%" stop-color="#eef6fd" stop-opacity="0.16" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Subtle Bottom-Left Mist Wash -->
+    <radialGradient id="bottomMist" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(230 830) rotate(-35) scale(520 440)">
+      <stop offset="0%" stop-color="#d4e7f8" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Flowing Ultra-Delicate Silk Sheen over White Porcelain -->
+    <linearGradient id="whiteSilk" x1="140" y1="220" x2="880" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#e4f1fc" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Left Glass Wing (Richer Translucent Cerulean-Cobalt) -->
+    <linearGradient id="wingLeftGrad" x1="512" y1="276" x2="320" y2="710" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#217ac4" stop-opacity="0.84" />
+      <stop offset="55%" stop-color="#489dd9" stop-opacity="0.70" />
+      <stop offset="100%" stop-color="#79bce8" stop-opacity="0.56" />
+    </linearGradient>
+
+    <!-- Right Overlapping Glass Wing (Deep Sapphire-Ocean Glass) -->
+    <linearGradient id="wingRightGrad" x1="512" y1="276" x2="700" y2="710" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d529c" stop-opacity="0.94" />
+      <stop offset="52%" stop-color="#1c71c0" stop-opacity="0.84" />
+      <stop offset="100%" stop-color="#489dd9" stop-opacity="0.70" />
+    </linearGradient>
+
+    <!-- Crisp Specular Rim for Frosted Wings -->
+    <linearGradient id="wingStroke" x1="300" y1="270" x2="720" y2="710" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.72" />
+      <stop offset="55%" stop-color="#cce7fb" stop-opacity="0.44" />
+      <stop offset="100%" stop-color="#60aee3" stop-opacity="0.32" />
+    </linearGradient>
+
+    <!-- Deeper Sapphire Water-Droplet Orb -->
+    <radialGradient id="orbGrad" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(496 604) rotate(48) scale(90)">
+      <stop offset="0%" stop-color="#8ed0f7" />
+      <stop offset="50%" stop-color="#1c73c4" />
+      <stop offset="100%" stop-color="#0d498f" />
+    </radialGradient>
+
+    <linearGradient id="orbRim" x1="468" y1="576" x2="554" y2="670" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.78" />
+      <stop offset="100%" stop-color="#2c84d4" stop-opacity="0.45" />
+    </linearGradient>
+
+    <!-- Unchanged Crisp Porcelain Tile Border -->
+    <linearGradient id="porcelainRim" x1="120" y1="100" x2="900" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95" />
+      <stop offset="50%" stop-color="#dce7f2" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#c6d8ea" stop-opacity="0.8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Main Porcelain White Squircle -->
+  <g filter="url(#dockShadow)">
+    <g clip-path="url(#squircleClip)">
+      <rect x="100" y="100" width="824" height="824" fill="url(#whiteBase)" />
+      <rect x="100" y="100" width="824" height="824" fill="url(#bottomMist)" />
+      <rect x="100" y="100" width="824" height="824" fill="url(#topMist)" />
+
+      <path
+        d="M60 660 C230 430 430 330 620 210 C750 130 880 120 970 160 L970 520 C810 470 580 510 340 760 C230 870 120 920 60 910 Z"
+        fill="url(#whiteSilk)"
+      />
+    </g>
+
+    <rect x="101.5" y="101.5" width="821" height="821" rx="184.5" stroke="url(#porcelainRim)" stroke-width="3" />
+  </g>
+
+  <!-- Shared-Apex Tangent Translucent Deep-Ocean Glass Wings -->
+  <g filter="url(#wingShadow)">
+    <path
+      d="M 455.77 309.43 L 281.77 629.43 A 64 64 0 0 0 394.23 690.57 L 568.23 370.57 A 64 64 0 0 0 455.77 309.43 Z"
+      fill="url(#wingLeftGrad)"
+      stroke="url(#wingStroke)"
+      stroke-width="2"
+    />
+    <path
+      d="M 455.77 370.57 L 629.77 690.57 A 64 64 0 0 0 742.23 629.43 L 568.23 309.43 A 64 64 0 0 0 455.77 370.57 Z"
+      fill="url(#wingRightGrad)"
+      stroke="url(#wingStroke)"
+      stroke-width="2.2"
+    />
+  </g>
+
+  <!-- Floating Deep-Ocean Glass Focal Sphere -->
+  <g filter="url(#orbShadow)">
+    <circle cx="512" cy="624" r="52" fill="url(#orbGrad)" stroke="url(#orbRim)" stroke-width="2" />
+    <ellipse cx="496" cy="604" rx="16" ry="11" transform="rotate(-32 496 604)" fill="#ffffff" fill-opacity="0.52" />
+  </g>
+</svg>

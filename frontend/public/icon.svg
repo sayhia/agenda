@@ -1,0 +1,34 @@
+<svg width="256" height="256" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="favClip">
+      <rect x="32" y="32" width="960" height="960" rx="224" />
+    </clipPath>
+    <linearGradient id="whiteBase" x1="120" y1="60" x2="900" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="60%" stop-color="#f8fbfe" />
+      <stop offset="100%" stop-color="#eaf1f8" />
+    </linearGradient>
+    <linearGradient id="wingLeft" x1="512" y1="240" x2="300" y2="740" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#217ac4" stop-opacity="0.86" />
+      <stop offset="100%" stop-color="#79bce8" stop-opacity="0.58" />
+    </linearGradient>
+    <linearGradient id="wingRight" x1="512" y1="240" x2="720" y2="740" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d529c" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#489dd9" stop-opacity="0.72" />
+    </linearGradient>
+    <radialGradient id="orbGrad" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(494 608) rotate(48) scale(96)">
+      <stop offset="0%" stop-color="#8ed0f7" />
+      <stop offset="52%" stop-color="#1c73c4" />
+      <stop offset="100%" stop-color="#0d498f" />
+    </radialGradient>
+  </defs>
+  <g clip-path="url(#favClip)">
+    <rect x="32" y="32" width="960" height="960" fill="url(#whiteBase)" />
+  </g>
+  <rect x="36" y="36" width="952" height="952" rx="220" stroke="#cddceb" stroke-width="10" />
+  <g transform="translate(512 512) scale(1.14) translate(-512 -512)">
+    <path d="M 455.77 309.43 L 281.77 629.43 A 64 64 0 0 0 394.23 690.57 L 568.23 370.57 A 64 64 0 0 0 455.77 309.43 Z" fill="url(#wingLeft)" stroke="#ffffff" stroke-opacity="0.65" stroke-width="3" />
+    <path d="M 455.77 370.57 L 629.77 690.57 A 64 64 0 0 0 742.23 629.43 L 568.23 309.43 A 64 64 0 0 0 455.77 370.57 Z" fill="url(#wingRight)" stroke="#ffffff" stroke-opacity="0.78" stroke-width="3" />
+    <circle cx="512" cy="624" r="54" fill="url(#orbGrad)" stroke="#ffffff" stroke-opacity="0.75" stroke-width="3" />
+  </g>
+</svg>

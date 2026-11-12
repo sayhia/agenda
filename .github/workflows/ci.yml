@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-check:
+    name: Frontend Test & Build (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install, test, and build desktop frontend (typecheck + Vite bundle)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+  desktop-matrix:
+    name: Desktop Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest, ubuntu-24.04]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install Linux GTK4 & WebKitGTK 6.0 build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-4-dev \
+            libwebkitgtk-6.0-dev \
+            pkg-config \
+            build-essential \
+            desktop-file-utils
+
+      - name: Validate Linux .desktop metadata
+        if: runner.os == 'Linux'
+        run: desktop-file-validate build/linux/desktop
+
+      - name: Install, test, and build desktop frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Run Go vet & tests
+        run: |
+          go vet ./...
+          go test -count=1 -v ./...
+
+      - name: Build production Universal binary smoke check (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop-amd64 .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop-arm64 .
+          lipo -create -output bin/agenda-desktop bin/agenda-desktop-amd64 bin/agenda-desktop-arm64
+          lipo -info bin/agenda-desktop
+
+      - name: Build production executables smoke check (Windows amd64 + arm64)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          foreach ($arch in @("amd64", "arm64")) {
+            $env:GOARCH = $arch
+            go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o "bin/agenda-desktop-$arch.exe" .
+          }
+
+      - name: Build production executable smoke check (Linux amd64)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop .
+          file bin/agenda-desktop

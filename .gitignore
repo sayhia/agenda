@@ -1,0 +1,11 @@
+.DS_Store
+.task
+.wails
+bin
+dist
+dmg-staging
+*.syso
+agenda.db
+/agenda-desktop
+frontend/dist
+frontend/node_modules

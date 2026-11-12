@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Name=Agenda Butler
+GenericName=Schedule Manager
+Comment=Agenda Butler — Personal & team schedule manager desktop app
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/agenda-desktop %u
+Terminal=false
+Type=Application
+Icon=agenda-desktop
+Categories=Office;Utility;
+StartupWMClass=agenda-desktop
+
+ 

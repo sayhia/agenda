@@ -1,0 +1,7 @@
+/* Reset to prevent accidental global drag */
+html, body {
+  margin: 0;
+  padding: 0;
+  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
+}

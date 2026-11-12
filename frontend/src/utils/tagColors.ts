@@ -1,0 +1,47 @@
+/**
+ * Deterministic tag color system for Agenda Butler.
+ * Automatically preserves vivid luminescence on dark surfaces and deep ink contrast on Daylight.
+ */
+
+function makeTagSwatch(hex: string): { bg: string; text: string; border: string } {
+  return {
+    bg: `color-mix(in oklab, ${hex} 14%, transparent)`,
+    text: `color-mix(in oklab, ${hex} 72%, var(--text-primary))`,
+    border: `color-mix(in oklab, ${hex} 30%, transparent)`,
+  };
+}
+
+const PRESET_TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  工作: makeTagSwatch('#3b82f6'),
+  生活: makeTagSwatch('#10b981'),
+  健康: makeTagSwatch('#f43f5e'),
+  会议: makeTagSwatch('#f59e0b'),
+  投放: makeTagSwatch('#0ea5e9'),
+  学习: makeTagSwatch('#06b6d4'),
+  重要: makeTagSwatch('#ef4444'),
+  限流: makeTagSwatch('#ea580c'),
+};
+
+const PALETTE = [
+  makeTagSwatch('#2563eb'),
+  makeTagSwatch('#f97316'),
+  makeTagSwatch('#14b8a6'),
+  makeTagSwatch('#46b7ff'),
+  makeTagSwatch('#eab308'),
+];
+
+export function getTagColor(tagName: string): { bg: string; text: string; border: string } {
+  const clean = tagName.trim();
+  if (PRESET_TAG_COLORS[clean]) {
+    return PRESET_TAG_COLORS[clean];
+  }
+
+  // Deterministic hash
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash << 5) - hash + clean.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % PALETTE.length;
+  return PALETTE[idx];
+}

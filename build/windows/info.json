@@ -1,0 +1,17 @@
+{
+	"fixed": {
+		"file_version": "1.8.0.0",
+		"product_version": "1.8.0.0"
+	},
+	"info": {
+		"0409": {
+			"FileVersion": "1.8.0",
+			"ProductVersion": "1.8.0",
+			"CompanyName": "sayhia",
+			"FileDescription": "Agenda Butler — 日程管家",
+			"LegalCopyright": "© 2026, sayhia",
+			"ProductName": "Agenda Butler",
+			"Comments": "Agenda Butler desktop application"
+		}
+	}
+}
