@@ -13,8 +13,16 @@ mkdir -p "${APP_DIR}/usr/bin"
 cp -r "${APP_BINARY}" "${APP_DIR}/usr/bin/"
 cp "${ICON_PATH}" "${APP_DIR}/"
 cp "${DESKTOP_FILE}" "${APP_DIR}/"
-chmod -R a+rX "${APP_DIR}"
+
+cat << EOF > "${APP_DIR}/AppRun"
+#!/bin/sh
+HERE="\$(dirname "\$(readlink -f "\${0}")")"
+exec "\${HERE}/usr/bin/${APP_NAME}" "\$@"
+EOF
+
+chmod +x "${APP_DIR}/AppRun"
 chmod +x "${APP_DIR}/usr/bin/"*
+chmod -R a+rX "${APP_DIR}"
 
 export LDAI_NO_CHECK_PERMISSIONS=1
 
