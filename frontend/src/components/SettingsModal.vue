@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/models';
+import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
 import {
   GetAIConfig,
   SaveAIConfig,
@@ -10,7 +10,7 @@ import {
   ClearDeliveryHistory,
   OptimizeDatabase,
   ImportJSONBackup,
-} from '../../bindings/agenda-desktop/agendaservice';
+} from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
 import {
   playReminderChime,
   getSoundProfile,

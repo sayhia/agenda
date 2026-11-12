@@ -1,4 +1,4 @@
-import type { Reminder, UpdateReminderRequest } from '../../bindings/agenda-desktop/models';
+import type { Reminder, UpdateReminderRequest } from '../../bindings/agenda-desktop/internal/agenda/models';
 
 export type ReminderStatus = 'active' | 'paused' | 'ended';
 export type ReminderPriority = 'p0' | 'p1' | 'p2' | 'p3';

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/models';
+import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
 import {
   formatTime,
   formatDateLabel,
@@ -13,7 +13,7 @@ import {
   highlightMatch,
 } from '../utils/format';
 import { getTagColor } from '../utils/tagColors';
-import { RevealInFinder } from '../../bindings/agenda-desktop/agendaservice';
+import { RevealInFinder } from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
 import { parseReminderSubtasks, parseReminderTags } from '../domain/reminder';
 import ScrolltideSelect from './ScrolltideSelect.vue';
 

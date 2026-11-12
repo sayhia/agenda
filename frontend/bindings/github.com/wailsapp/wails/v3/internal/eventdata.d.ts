@@ -13,6 +13,7 @@ declare module "@wailsio/runtime" {
             "reminder-triggered": { [_ in string]?: any } | null;
             "reminders-updated": boolean;
             "time": string;
+            "window-fullscreen": boolean;
         }
     }
 }

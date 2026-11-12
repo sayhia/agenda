@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"time"
 
+	"agenda-desktop/internal/agenda"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -31,12 +32,12 @@ func init() {
 
 func main() {
 	// 1. Initialize SQLite Database
-	db, err := InitDB()
+	db, err := agenda.InitDB()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	agendaService := NewAgendaService(db)
+	agendaService := agenda.NewAgendaService(db)
 
 	// 2. Initialize Wails v3 Application
 	app := application.New(application.Options{
@@ -112,7 +113,7 @@ func main() {
 	})
 
 	// 4. Start Background Scheduler Daemon
-	scheduler := NewScheduler(db, app)
+	scheduler := agenda.NewScheduler(db, app)
 	scheduler.Start()
 	defer scheduler.Stop()
 

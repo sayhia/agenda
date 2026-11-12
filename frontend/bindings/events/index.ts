@@ -33,3 +33,8 @@ export const RemindersUpdated = "reminders-updated";
  */
 export const Time = "time";
 
+/**
+ * Name of the custom event "window-fullscreen".
+ */
+export const WindowFullscreen = "window-fullscreen";
+

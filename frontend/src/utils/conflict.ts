@@ -1,4 +1,4 @@
-import type { Reminder } from '../../bindings/agenda-desktop/models';
+import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
 
 export interface ConflictResult {
   hasConflict: boolean;

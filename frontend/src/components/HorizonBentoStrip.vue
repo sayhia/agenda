@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/models';
+import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
 import { formatTime } from '../utils/format';
 import { handlePointerGlow, resetPointerGlow } from '../utils/pointerGlow';
 
@@ -90,21 +90,33 @@ const nextUpcoming = computed(() => {
   if (!best) return null;
   const diffMin = Math.round((bestTime - nowMs) / 60000);
   let badge = '';
-  let urgent = false;
+  let state: 'normal' | 'soon' | 'overdue' = 'normal';
+
   if (diffMin < 0) {
     const overdueMin = Math.abs(diffMin);
-    badge = overdueMin >= 60 ? `逾期 ${Math.floor(overdueMin / 60)}h` : `逾期 ${overdueMin}m`;
-    urgent = true;
+    if (overdueMin >= 60) {
+      const hrs = Math.floor(overdueMin / 60);
+      const mins = overdueMin % 60;
+      badge = mins > 0 ? `逾期 ${hrs} 小时 ${mins} 分` : `逾期 ${hrs} 小时`;
+    } else {
+      badge = `逾期 ${overdueMin} 分钟`;
+    }
+    state = 'overdue';
+  } else if (diffMin === 0) {
+    badge = '即将开始';
+    state = 'soon';
   } else if (diffMin < 60) {
-    badge = `${diffMin}m 后`;
-    urgent = diffMin <= 15;
+    badge = `${diffMin} 分钟后`;
+    state = diffMin <= 15 ? 'soon' : 'normal';
   } else if (diffMin < 24 * 60) {
-    badge = `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`;
+    const hrs = Math.floor(diffMin / 60);
+    const mins = diffMin % 60;
+    badge = mins > 0 ? `${hrs} 小时 ${mins} 分后` : `${hrs} 小时后`;
   } else {
-    badge = `${Math.floor(diffMin / (24 * 60))}d`;
+    badge = `${Math.floor(diffMin / (24 * 60))} 天后`;
   }
 
-  return { reminder: best, badge, urgent, time: formatTime(best.scheduled_at) };
+  return { reminder: best, badge, state, time: formatTime(best.scheduled_at) };
 });
 
 // Compute smooth SVG polyline path for the 7-day workload pulse wave (Project Roadmap style)
@@ -198,7 +210,7 @@ function toggleDay(key: string) {
     <button
       type="button"
       class="bento-tile bento-next-signal st-reticle"
-      :class="{ urgent: nextUpcoming?.urgent }"
+      :class="nextUpcoming?.state"
       :disabled="!nextUpcoming"
       :title="nextUpcoming ? `打开临近日程：${nextUpcoming.reminder.title}` : '当前暂无待办日程'"
       @pointermove="handlePointerGlow"
@@ -207,10 +219,10 @@ function toggleDay(key: string) {
     >
       <div class="signal-top-row">
         <span class="mono-kicker">
-          <i class="signal-led" :class="{ urgent: nextUpcoming?.urgent }"></i>
+          <i class="signal-led" :class="nextUpcoming?.state"></i>
           NEXT UP
         </span>
-        <span v-if="nextUpcoming" class="next-badge tabular-nums" :class="{ urgent: nextUpcoming.urgent }">
+        <span v-if="nextUpcoming" class="next-badge tabular-nums" :class="nextUpcoming.state">
           {{ nextUpcoming.badge }}
         </span>
       </div>
@@ -456,18 +468,37 @@ function toggleDay(key: string) {
 
 /* Tile 3: Efficiency Pulse + Next Up Signal Card */
 .bento-next-signal {
+  --signal-color: var(--tide, #46b7ff);
+  --signal-text: var(--tide-text, var(--accent-text));
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 4px;
-  padding: 9px 12px;
+  gap: 8px;
+  padding: 10px 13px;
   background:
-    radial-gradient(200px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--tide, #46b7ff) 12%, transparent), transparent 72%),
-    radial-gradient(circle at 8% 100%, color-mix(in srgb, var(--tide, #46b7ff) 12%, transparent), transparent 62%),
+    radial-gradient(200px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--signal-color) 12%, transparent), transparent 72%),
+    radial-gradient(circle at 8% 100%, color-mix(in srgb, var(--signal-color) 12%, transparent), transparent 62%),
     var(--surface);
   cursor: pointer;
   overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.bento-next-signal.soon {
+  --signal-color: #ff8b1a;
+  --signal-text: #ffb45c;
+  border-color: color-mix(in srgb, #ff8b1a 32%, var(--border-subtle));
+}
+
+.bento-next-signal.overdue {
+  --signal-color: var(--danger);
+  --signal-text: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-subtle));
+}
+
+:global([data-theme="daylight"]) .bento-next-signal.soon {
+  --signal-color: #d97706;
+  --signal-text: #b45309;
 }
 
 .bento-next-signal:disabled {
@@ -476,12 +507,8 @@ function toggleDay(key: string) {
 }
 
 .bento-next-signal:not(:disabled):hover {
-  border-color: var(--border-strong);
+  border-color: color-mix(in srgb, var(--signal-color) 48%, var(--border-strong));
   transform: translateY(-1px);
-}
-
-.bento-next-signal.urgent {
-  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-subtle));
 }
 
 .signal-top-row {
@@ -492,38 +519,28 @@ function toggleDay(key: string) {
 }
 
 .signal-led {
-  width: 6px;
-  height: 6px;
+  width: 6.5px;
+  height: 6.5px;
   border-radius: 50%;
-  background: var(--tide, #46b7ff);
-  box-shadow: 0 0 7px var(--tide, #46b7ff);
-}
-
-.signal-led.urgent {
-  background: var(--danger);
-  box-shadow: 0 0 8px var(--danger);
+  background: var(--signal-color);
+  box-shadow: 0 0 8px var(--signal-color);
 }
 
 .next-badge {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 700;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 99px;
-  background: color-mix(in srgb, var(--tide, #46b7ff) 14%, transparent);
-  color: var(--tide-text, var(--accent-text));
-}
-
-.next-badge.urgent {
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
-  color: var(--danger);
+  background: color-mix(in srgb, var(--signal-color) 16%, transparent);
+  color: var(--signal-text);
 }
 
 .signal-body {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -533,16 +550,16 @@ function toggleDay(key: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 650;
   color: var(--text-primary);
 }
 
 .workload-wave-svg {
-  width: 66px;
-  height: 22px;
+  width: 76px;
+  height: 24px;
   flex: none;
-  color: var(--tide, #46b7ff);
+  color: var(--signal-color);
 }
 
 @media (max-width: 1140px) {
@@ -550,7 +567,16 @@ function toggleDay(key: string) {
     grid-template-columns: minmax(175px, 0.8fr) minmax(260px, 1.3fr);
   }
   .bento-next-signal {
-    display: none;
+    grid-column: 1 / -1;
+    padding: 11px 14px;
+    gap: 10px;
+  }
+  .bento-next-signal .next-title {
+    font-size: 13px;
+  }
+  .bento-next-signal .workload-wave-svg {
+    width: 84px;
+    height: 26px;
   }
 }
 
@@ -560,6 +586,9 @@ function toggleDay(key: string) {
   }
   .bento-hero-rhythm {
     display: none;
+  }
+  .bento-next-signal {
+    grid-column: 1 / -1;
   }
 }
 </style>

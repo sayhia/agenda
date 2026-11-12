@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/models';
+import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
 import type { AgendaView, StatsData } from '../types/ui';
 import { parseReminderTags } from '../domain/reminder';
 

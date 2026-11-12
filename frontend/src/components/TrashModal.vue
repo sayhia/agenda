@@ -5,8 +5,8 @@ import {
   RestoreReminder,
   PermanentDelete,
   EmptyTrash,
-} from '../../bindings/agenda-desktop/agendaservice';
-import type { Reminder } from '../../bindings/agenda-desktop/models';
+} from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
+import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
 import { formatTime, formatDateLabel } from '../utils/format';
 
 const props = defineProps<{

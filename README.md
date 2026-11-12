@@ -11,7 +11,7 @@
 | **桌面框架** | **Wails v3.1.0** (`github.com/wailsapp/wails/v3`) | 轻量极速原生桌面框架，支持 macOS 磨砂半透明背景 (Translucent Backdrop) 与隐式标题栏 |
 | **宿主后台** | **Golang 1.27** | 高性能原生进程、后台秒级调度引擎、系统原生弹窗通知调度 (AppleScript/osascript) |
 | **持久层数据库** | **SQLite** (`modernc.org/sqlite`) | 纯 Go 零 CGO 嵌入式关系型数据库，开箱即用，自动迁移，存储于 `~/.agenda-desktop/agenda.db` |
-| **AI 大模型接入** | **OpenAI Compatible REST API** (`ai.go`) | 原生支持 **DeepSeek**、**OpenAI (GPT-4o)**、**本地 Ollama**、**通义千问 (Qwen)** 等多模型，零外部依赖 |
+| **AI 大模型接入** | **OpenAI Compatible REST API** (`internal/agenda/ai.go`) | 原生支持 **DeepSeek**、**OpenAI (GPT-4o)**、**本地 Ollama**、**通义千问 (Qwen)** 等多模型，零外部依赖 |
 | **前端界面** | **Vue 3 (Composition API / `<script setup>`)** | 响应式声明式 UI，模块化组件拆分 |
 | **编程语言** | **TypeScript 5.9** | 强类型安全保障，包含 Wails 自动生成的 Go-TS 服务双向绑定 |
 | **构建打包** | **Vite 8 + vue-tsc** | 秒级热重载与极速静态编译 |
@@ -76,7 +76,7 @@
    - `Esc`: 阶梯式关闭开启的弹窗、抽屉或清空筛选
 8. **月历深度交互 ([MonthCalendar.vue](./frontend/src/components/MonthCalendar.vue))**
    - 点击任意日期单元格即时展开 **当日日程清单浮层**，支持行内快捷暂停/激活、编辑、删除与「在此日期新建日程」。
-9. **RFC 5545 iCalendar 互导支持 ([ics.go](./ics.go))**
+9. **RFC 5545 iCalendar 互导支持 ([ics.go](./internal/agenda/ics.go))**
    - 支持从第三方日历（Apple Calendar、Google Calendar 等）导入/导出 `.ics` 文件。
 
 ---
@@ -86,11 +86,14 @@
 ```text
 agenda-desktop/
 ├── main.go                     # Wails3 应用初始化、Mac 磨砂窗口配置与调度器启动
-├── service.go                  # AgendaService 后台 RPC 接口定义
-├── ai.go                       # AI 大模型接口 (OpenAI 协议/DeepSeek/Ollama 适配、早报、冲突检测)
-├── db.go                       # SQLite 初始化、自动建表迁移、默认日程种子
-├── scheduler.go                # 后台轮询、系统通知分发、RRULE 下次时间推算
-├── ics.go                      # iCalendar RFC 5545 导出与导入解析
+├── internal/
+│   └── agenda/
+│       ├── service.go          # AgendaService 后台 RPC 接口定义
+│       ├── ai.go               # AI 大模型接口 (OpenAI 协议/DeepSeek/Ollama 适配、早报、冲突检测)
+│       ├── db.go               # SQLite 初始化、自动建表迁移、默认日程种子
+│       ├── scheduler.go        # 后台轮询、系统通知分发、RRULE 下次时间推算
+│       ├── csv.go              # CSV 导出与导入解析
+│       └── ics.go              # iCalendar RFC 5545 导出与导入解析
 ├── bin/
 │   └── agenda-desktop          # 编译完成的独立桌面可执行程序 (~22 MB)
 └── frontend/                   # Vue 3 + TypeScript 前端工程
@@ -112,7 +115,7 @@ agenda-desktop/
     │       ├── BatchActionBar.vue      # 底部批量操作胶囊浮条
     │       ├── SettingsModal.vue       # 系统设置与 AI 大模型配置面板
     │       └── ToastNotice.vue         # 悬浮轻吐司通知
-    └── bindings/agenda-desktop # Wails3 自动生成的强类型 TS/JS 绑定
+    └── bindings/agenda-desktop/internal/agenda # Wails3 自动生成的强类型 TS/JS 绑定
 ```
 
 ---

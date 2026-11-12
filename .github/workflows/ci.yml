@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-latest, ubuntu-24.04]
+        os: [macos-latest, windows-latest, ubuntu-24.04]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,7 +70,9 @@ jobs:
 
       - name: Validate Linux .desktop metadata
         if: runner.os == 'Linux'
-        run: desktop-file-validate build/linux/desktop
+        run: |
+          cp build/linux/desktop /tmp/agenda-desktop.desktop
+          desktop-file-validate /tmp/agenda-desktop.desktop
 
       - name: Install, test, and build desktop frontend
         working-directory: frontend
