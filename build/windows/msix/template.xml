@@ -8,7 +8,7 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="agenda-desktop"
+        Path="agenda"
         Arguments=""
         InstallLocation="C:\Program Files\sayhia\My Product">
     </Installer>
@@ -18,17 +18,17 @@
         PublisherName="CN=sayhia"
         PublisherDisplayName="sayhia"
         Version="0.1.0.0"
-        PackageDescription="A agenda-desktop application">
+        PackageDescription="A agenda application">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.feihu.agendadesktop"
-                Description="A agenda-desktop application"
+                Id="com.agendabutler.desktop"
+                Description="A agenda application"
                 DisplayName="My Product"
-                ExecutableName="agenda-desktop"
+                ExecutableName="agenda"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -43,11 +43,11 @@
             <Framework>false</Framework>
             <DisplayName>My Product</DisplayName>
             <PublisherDisplayName>sayhia</PublisherDisplayName>
-            <Description>A agenda-desktop application</Description>
+            <Description>A agenda application</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="agenda-desktop.msix" />
+    <SaveLocation PackagePath="agenda.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

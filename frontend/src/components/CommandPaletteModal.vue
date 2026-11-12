@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
+import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { formatTime, formatDateLabel } from '../utils/format';
 import { parseReminderTags } from '../domain/reminder';
 

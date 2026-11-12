@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"time"
 
-	"agenda-desktop/internal/agenda"
+	"agenda/internal/agenda"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )

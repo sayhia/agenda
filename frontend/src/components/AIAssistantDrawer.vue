@@ -9,8 +9,8 @@ import {
   GetAIConfig,
   ParseMultipleRemindersWithAI,
   SaveAIChatMessage,
-} from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
-import type { AIChatMessage, AIConfig, Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
+} from '../../bindings/agenda/internal/agenda/agendaservice';
+import type { AIChatMessage, AIConfig, Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { parseReminderTags } from '../domain/reminder';
 import { formatDateLabel, formatRepeatLabel, formatTime } from '../utils/format';
 import { getTagColor } from '../utils/tagColors';

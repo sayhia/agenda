@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
+import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import {
   CheckSimilarReminders,
   FindOptimalFreeSlot,
   PolishReminderWithAI,
-} from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
+} from '../../bindings/agenda/internal/agenda/agendaservice';
 import { checkTimeConflict } from '../utils/conflict';
 import { parseReminderSubtasks, parseReminderTags } from '../domain/reminder';
 import TunerDurationDial from './TunerDurationDial.vue';

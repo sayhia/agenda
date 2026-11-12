@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DeliveryRecord } from '../../bindings/agenda-desktop/internal/agenda/models';
+import type { DeliveryRecord } from '../../bindings/agenda/internal/agenda/models';
 
 defineProps<{
   visible: boolean;

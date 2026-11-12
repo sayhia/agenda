@@ -8,7 +8,7 @@
         <key>CFBundleDisplayName</key>
             <string>日程管家</string>
         <key>CFBundleExecutable</key>
-            <string>agenda-desktop</string>
+            <string>agenda</string>
         <key>CFBundleIdentifier</key>
             <string>com.agendabutler.desktop</string>
         <key>CFBundleVersion</key>

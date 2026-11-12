@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
+import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import {
   GetAIConfig,
   SaveAIConfig,
@@ -10,7 +10,7 @@ import {
   ClearDeliveryHistory,
   OptimizeDatabase,
   ImportJSONBackup,
-} from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
+} from '../../bindings/agenda/internal/agenda/agendaservice';
 import {
   playReminderChime,
   getSoundProfile,
@@ -600,7 +600,7 @@ function handleDndToggle() {
             </div>
             <div class="tech-item">
               <span class="tech-label">数据存储目录</span>
-              <span class="tech-val">~/.agenda-desktop/agenda.db</span>
+              <span class="tech-val">~/.agenda/agenda.db</span>
             </div>
           </div>
         </div>

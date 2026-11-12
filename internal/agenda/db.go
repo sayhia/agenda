@@ -117,9 +117,36 @@ func getDBPath() string {
 	if err != nil {
 		return "agenda.db"
 	}
-	dir := filepath.Join(home, ".agenda-desktop")
-	_ = os.MkdirAll(dir, 0755)
-	return filepath.Join(dir, "agenda.db")
+	legacyDir := filepath.Join(home, ".agenda-desktop")
+	newDir := filepath.Join(home, ".agenda")
+	legacyDB := filepath.Join(legacyDir, "agenda.db")
+	newDB := filepath.Join(newDir, "agenda.db")
+
+	_ = os.MkdirAll(newDir, 0755)
+
+	// Backward compatibility: migrate existing ~/.agenda-desktop/agenda.db if ~/.agenda/agenda.db does not exist yet
+	if _, err := os.Stat(newDB); os.IsNotExist(err) {
+		if _, err := os.Stat(legacyDB); err == nil {
+			_ = copyFile(legacyDB, newDB)
+		}
+	}
+
+	return newDB
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func InitDB() (*DB, error) {
@@ -718,7 +745,7 @@ func (d *DB) BackupDatabase(destDir string) (string, error) {
 
 	if destDir == "" {
 		home, _ := os.UserHomeDir()
-		destDir = filepath.Join(home, ".agenda-desktop", "backups")
+		destDir = filepath.Join(home, ".agenda", "backups")
 	}
 	_ = os.MkdirAll(destDir, 0755)
 

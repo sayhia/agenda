@@ -6,6 +6,7 @@ dist
 dmg-staging
 *.syso
 agenda.db
+/agenda
 /agenda-desktop
 frontend/dist
 frontend/node_modules

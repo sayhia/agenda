@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
+import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { playFocusCompleteChime } from '../utils/audio';
 
 const props = defineProps<{ visible: boolean; reminder: Reminder | null }>();

@@ -12,9 +12,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend-check:
-    name: Frontend Test & Build (Ubuntu 24.04)
+  prepare:
+    name: Frontend Check & Version (Ubuntu 24.04)
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      win_version: ${{ steps.meta.outputs.win_version }}
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,6 +30,23 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Resolve release version & tag
+        id: meta
+        run: |
+          RAW_VERSION="$(sed -nE 's/^[[:space:]]*version:[[:space:]]*"([^"]+)".*/\1/p' build/config.yml | head -n 1)"
+          RAW_VERSION="${RAW_VERSION:-1.8.0}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          if [[ "$CLEAN_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            WIN_VERSION="${BASH_REMATCH[1]}"
+          else
+            WIN_VERSION="1.8.0"
+          fi
+          TAG_NAME="v${CLEAN_VERSION}"
+          echo "version=${CLEAN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "win_version=${WIN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Resolved VERSION=${CLEAN_VERSION}, WIN_VERSION=${WIN_VERSION}, TAG=${TAG_NAME}"
+
       - name: Install, test, and build desktop frontend (typecheck + Vite bundle)
         working-directory: frontend
         run: |
@@ -33,13 +54,12 @@ jobs:
           npm test
           npm run build
 
-  desktop-matrix:
-    name: Desktop Build & Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-24.04]
+  package-macos:
+    name: macOS Test & Release Package (.dmg + .app.tar.gz)
+    needs: prepare
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,8 +77,235 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Install Linux GTK4 & WebKitGTK 6.0 build dependencies
-        if: runner.os == 'Linux'
+      - name: Install, test, and build desktop frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Run Go vet & tests
+        run: |
+          go vet ./...
+          go test -count=1 -v ./...
+
+      - name: Build macOS amd64 & arm64 binaries and create Universal binary
+        run: |
+          mkdir -p bin dist dmg-staging
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-amd64 .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-arm64 .
+          lipo -create -output bin/agenda-universal bin/agenda-amd64 bin/agenda-arm64
+          lipo -info bin/agenda-universal
+
+      - name: Assemble & sign Agenda Butler.app bundle
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_IDENTITY: ${{ secrets.APPLE_DEVELOPER_IDENTITY }}
+        run: |
+          APP_BUNDLE="bin/Agenda Butler.app"
+          rm -rf "$APP_BUNDLE"
+          mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+          cp bin/agenda-universal "$APP_BUNDLE/Contents/MacOS/agenda"
+          chmod +x "$APP_BUNDLE/Contents/MacOS/agenda"
+          cp build/darwin/icons.icns "$APP_BUNDLE/Contents/Resources/"
+          cp build/darwin/Assets.car "$APP_BUNDLE/Contents/Resources/"
+          cp build/darwin/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$APP_BUNDLE/Contents/Info.plist"
+
+          if [[ -n "$APPLE_CERTIFICATE_P12" && -n "$APPLE_DEVELOPER_IDENTITY" ]]; then
+            echo "Signing with Developer ID certificate..."
+            KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+            KEYCHAIN_PASS="temp-ci-keychain-pass"
+            echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security list-keychain -d user -s "$KEYCHAIN_PATH"
+            security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            codesign --force --deep --options runtime --timestamp --sign "$APPLE_DEVELOPER_IDENTITY" "$APP_BUNDLE"
+          else
+            echo "No Apple Developer ID secrets configured; applying ad-hoc codesign..."
+            codesign --force --deep --sign - "$APP_BUNDLE"
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+      - name: Package headless DMG, app tarball & checksums
+        run: |
+          cp -R "bin/Agenda Butler.app" dmg-staging/
+          ln -sfn /Applications dmg-staging/Applications
+          hdiutil create \
+            -volname "Agenda Butler" \
+            -srcfolder dmg-staging \
+            -ov \
+            -format UDZO \
+            "dist/AgendaButler-v${VERSION}-macos-universal.dmg"
+          tar -czf "dist/AgendaButler-v${VERSION}-macos-universal.app.tar.gz" -C bin "Agenda Butler.app"
+          (cd dist && shasum -a 256 "AgendaButler-v${VERSION}-macos-universal.dmg" > "AgendaButler-v${VERSION}-macos-universal.dmg.sha256" && shasum -a 256 "AgendaButler-v${VERSION}-macos-universal.app.tar.gz" > "AgendaButler-v${VERSION}-macos-universal.app.tar.gz.sha256")
+          ls -lh dist
+
+      - name: Upload macOS release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/*
+          if-no-files-found: error
+
+  package-windows:
+    name: Windows ${{ matrix.arch }} Test & Release Package (.exe + NSIS)
+    needs: prepare
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      WIN_VERSION: ${{ needs.prepare.outputs.win_version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install Wails3 CLI & ensure NSIS (makensis)
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+          $gopath = (go env GOPATH)
+          Add-Content -Path $env:GITHUB_PATH -Value "$gopath\bin"
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y
+            Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\NSIS"
+          }
+
+      - name: Install, test, and build desktop frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Run Go vet & tests
+        if: matrix.arch == 'amd64'
+        run: |
+          go vet ./...
+          go test -count=1 -v ./...
+
+      - name: Stamp Windows resource & NSIS version metadata
+        shell: pwsh
+        run: |
+          node -e '
+            const fs = require("fs");
+            const ver = process.env.WIN_VERSION;
+            const infoPath = "build/windows/info.json";
+            const info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
+            info.fixed.file_version = `${ver}.0`;
+            info.fixed.product_version = `${ver}.0`;
+            info.info["0409"].FileVersion = ver;
+            info.info["0409"].ProductVersion = ver;
+            fs.writeFileSync(infoPath, JSON.stringify(info, null, "\t") + "\n");
+
+            const nshPath = "build/windows/nsis/wails_tools.nsh";
+            const nsh = fs.readFileSync(nshPath, "utf8")
+              .replace(/!define INFO_PRODUCTVERSION ".*?"/, `!define INFO_PRODUCTVERSION "${ver}"`);
+            fs.writeFileSync(nshPath, nsh);
+          '
+
+      - name: Generate .syso resources & build Windows executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin, dist, "dist/portable" | Out-Null
+          wails3 generate syso `
+            -arch $env:ARCH `
+            -icon build/windows/icon.ico `
+            -manifest build/windows/wails.exe.manifest `
+            -info build/windows/info.json `
+            -out "wails_windows_$($env:ARCH).syso"
+
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = $env:ARCH
+          go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/agenda.exe .
+          Remove-Item -Force "wails_windows_$($env:ARCH).syso"
+
+          Copy-Item bin/agenda.exe dist/portable/AgendaButler.exe
+          Compress-Archive -Path dist/portable/AgendaButler.exe -DestinationPath "dist/AgendaButler-v$($env:VERSION)-windows-$($env:ARCH)-portable.zip" -Force
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          wails3 generate webview2bootstrapper -dir build/windows/nsis
+          $argFlag = if ($env:ARCH -eq "amd64") { "AMD64" } else { "ARM64" }
+          $exePath = (Resolve-Path "bin/agenda.exe").Path
+          Push-Location build/windows/nsis
+          try {
+            makensis "-DARG_WAILS_${argFlag}_BINARY=$exePath" project.nsi
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $nsisOut = "bin/agenda-$($env:ARCH)-installer.exe"
+          if (-not (Test-Path $nsisOut)) {
+            throw "Expected NSIS output not found: $nsisOut"
+          }
+          $finalSetup = "dist/AgendaButler-v$($env:VERSION)-windows-$($env:ARCH)-setup.exe"
+          Move-Item -Force $nsisOut $finalSetup
+
+          foreach ($file in @(
+            "AgendaButler-v$($env:VERSION)-windows-$($env:ARCH)-setup.exe",
+            "AgendaButler-v$($env:VERSION)-windows-$($env:ARCH)-portable.zip"
+          )) {
+            $hash = (Get-FileHash "dist/$file" -Algorithm SHA256).Hash.ToLower()
+            "$hash  $file" | Out-File -FilePath "dist/$file.sha256" -Encoding ascii
+          }
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: dist/*${{ matrix.arch }}*
+          if-no-files-found: error
+
+  package-linux:
+    name: Linux amd64 Test & Release Package (.deb + .rpm + .AppImage + .tar.gz)
+    needs: prepare
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install Linux GTK4, WebKitGTK 6.0 & packaging dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -66,13 +313,22 @@ jobs:
             libwebkitgtk-6.0-dev \
             pkg-config \
             build-essential \
-            desktop-file-utils
+            rpm \
+            file \
+            patchelf \
+            libfuse2t64 \
+            desktop-file-utils \
+            wget
+
+      - name: Install Wails3 CLI
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Validate Linux .desktop metadata
-        if: runner.os == 'Linux'
         run: |
-          cp build/linux/desktop /tmp/agenda-desktop.desktop
-          desktop-file-validate /tmp/agenda-desktop.desktop
+          cp build/linux/desktop /tmp/agenda.desktop
+          desktop-file-validate /tmp/agenda.desktop
 
       - name: Install, test, and build desktop frontend
         working-directory: frontend
@@ -86,30 +342,107 @@ jobs:
           go vet ./...
           go test -count=1 -v ./...
 
-      - name: Build production Universal binary smoke check (macOS)
-        if: runner.os == 'macOS'
+      - name: Build Linux production binary & validate desktop entry
         run: |
-          mkdir -p bin
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop-amd64 .
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop-arm64 .
-          lipo -create -output bin/agenda-desktop bin/agenda-desktop-amd64 bin/agenda-desktop-arm64
-          lipo -info bin/agenda-desktop
+          mkdir -p bin dist
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda .
+          cp build/linux/desktop build/linux/agenda.desktop
+          desktop-file-validate build/linux/agenda.desktop
 
-      - name: Build production executables smoke check (Windows amd64 + arm64)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Package .deb, .rpm, and portable .tar.gz
+        env:
+          GOARCH: amd64
         run: |
-          New-Item -ItemType Directory -Force -Path bin | Out-Null
-          $env:CGO_ENABLED = "0"
-          $env:GOOS = "windows"
-          foreach ($arch in @("amd64", "arm64")) {
-            $env:GOARCH = $arch
-            go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o "bin/agenda-desktop-$arch.exe" .
-          }
+          sed -i -E "s|^version:.*|version: \"${VERSION}\"|" build/linux/nfpm/nfpm.yaml
 
-      - name: Build production executable smoke check (Linux amd64)
-        if: runner.os == 'Linux'
+          mkdir -p dist/nfpm-out
+          wails3 tool package -name agenda -format deb -config ./build/linux/nfpm/nfpm.yaml -out ./dist/nfpm-out
+          wails3 tool package -name agenda -format rpm -config ./build/linux/nfpm/nfpm.yaml -out ./dist/nfpm-out
+
+          DEB_FILE="$(find dist/nfpm-out -maxdepth 1 -name '*.deb' | head -n 1)"
+          RPM_FILE="$(find dist/nfpm-out -maxdepth 1 -name '*.rpm' | head -n 1)"
+          [[ -n "$DEB_FILE" && -n "$RPM_FILE" ]]
+          mv "$DEB_FILE" "dist/AgendaButler-v${VERSION}-linux-amd64.deb"
+          mv "$RPM_FILE" "dist/AgendaButler-v${VERSION}-linux-x86_64.rpm"
+          rm -rf dist/nfpm-out
+
+          PORTABLE_DIR="dist/portable-stage/AgendaButler-v${VERSION}-linux-amd64"
+          mkdir -p "$PORTABLE_DIR"
+          cp bin/agenda "$PORTABLE_DIR/agenda"
+          chmod +x "$PORTABLE_DIR/agenda"
+          cp build/appicon.png "$PORTABLE_DIR/agenda.png"
+          sed 's|Exec=/usr/local/bin/agenda|Exec=agenda|g' build/linux/desktop > "$PORTABLE_DIR/agenda.desktop"
+          tar -czf "dist/AgendaButler-v${VERSION}-linux-amd64.tar.gz" -C dist/portable-stage "AgendaButler-v${VERSION}-linux-amd64"
+          rm -rf dist/portable-stage
+
+      - name: Package .AppImage
         run: |
-          mkdir -p bin
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop .
-          file bin/agenda-desktop
+          WORK_DIR="$(mktemp -d)"
+          cp bin/agenda "$WORK_DIR/agenda"
+          cp build/appicon.png "$WORK_DIR/agenda.png"
+          sed 's|Exec=/usr/local/bin/agenda|Exec=agenda|g' build/linux/desktop > "$WORK_DIR/agenda.desktop"
+          BUILD_SCRIPT="$(pwd)/build/linux/appimage/build.sh"
+
+          (
+            cd "$WORK_DIR"
+            APP_NAME="agenda" \
+            APP_BINARY="./agenda" \
+            ICON_PATH="./agenda.png" \
+            DESKTOP_FILE="./agenda.desktop" \
+            bash "$BUILD_SCRIPT"
+          )
+
+          chmod +x "$WORK_DIR/agenda.AppImage"
+          mv "$WORK_DIR/agenda.AppImage" "dist/AgendaButler-v${VERSION}-linux-x86_64.AppImage"
+          rm -rf "$WORK_DIR"
+
+          (
+            cd dist
+            for f in \
+              "AgendaButler-v${VERSION}-linux-amd64.deb" \
+              "AgendaButler-v${VERSION}-linux-x86_64.rpm" \
+              "AgendaButler-v${VERSION}-linux-amd64.tar.gz" \
+              "AgendaButler-v${VERSION}-linux-x86_64.AppImage"; do
+              sha256sum "$f" > "$f.sha256"
+            done
+          )
+          ls -lh dist
+
+      - name: Upload Linux release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: dist/*
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [prepare, package-macos, package-windows, package-linux]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate combined SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          rm -f SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name '*.sha256' ! -name 'SHA256SUMS.txt' -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: "Agenda Butler ${{ needs.prepare.outputs.tag }}"
+          make_latest: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/*

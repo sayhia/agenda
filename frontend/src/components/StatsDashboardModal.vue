@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
-import { GetDatabaseStats, VacuumDatabase } from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
+import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
+import { GetDatabaseStats, VacuumDatabase } from '../../bindings/agenda/internal/agenda/agendaservice';
 import { handlePointerGlow, resetPointerGlow } from '../utils/pointerGlow';
 
 const props = defineProps<{

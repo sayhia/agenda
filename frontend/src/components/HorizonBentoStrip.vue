@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Reminder } from '../../bindings/agenda-desktop/internal/agenda/models';
+import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { formatTime } from '../utils/format';
 import { handlePointerGlow, resetPointerGlow } from '../utils/pointerGlow';
 

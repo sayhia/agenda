@@ -1,4 +1,4 @@
-module agenda-desktop
+module agenda
 
 go 1.26.0
 

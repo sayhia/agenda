@@ -110,10 +110,10 @@ jobs:
       - name: Build macOS amd64 & arm64 binaries and create Universal binary
         run: |
           mkdir -p bin dist dmg-staging
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop-amd64 .
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop-arm64 .
-          lipo -create -output bin/agenda-desktop-universal bin/agenda-desktop-amd64 bin/agenda-desktop-arm64
-          lipo -info bin/agenda-desktop-universal
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-amd64 .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-arm64 .
+          lipo -create -output bin/agenda-universal bin/agenda-amd64 bin/agenda-arm64
+          lipo -info bin/agenda-universal
 
       - name: Assemble & sign Agenda Butler.app bundle
         env:
@@ -124,8 +124,8 @@ jobs:
           APP_BUNDLE="bin/Agenda Butler.app"
           rm -rf "$APP_BUNDLE"
           mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
-          cp bin/agenda-desktop-universal "$APP_BUNDLE/Contents/MacOS/agenda-desktop"
-          chmod +x "$APP_BUNDLE/Contents/MacOS/agenda-desktop"
+          cp bin/agenda-universal "$APP_BUNDLE/Contents/MacOS/agenda"
+          chmod +x "$APP_BUNDLE/Contents/MacOS/agenda"
           cp build/darwin/icons.icns "$APP_BUNDLE/Contents/Resources/"
           cp build/darwin/Assets.car "$APP_BUNDLE/Contents/Resources/"
           cp build/darwin/Info.plist "$APP_BUNDLE/Contents/Info.plist"
@@ -256,10 +256,10 @@ jobs:
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = $env:ARCH
-          go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/agenda-desktop.exe .
+          go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/agenda.exe .
           Remove-Item -Force "wails_windows_$($env:ARCH).syso"
 
-          Copy-Item bin/agenda-desktop.exe dist/portable/AgendaButler.exe
+          Copy-Item bin/agenda.exe dist/portable/AgendaButler.exe
           Compress-Archive -Path dist/portable/AgendaButler.exe -DestinationPath "dist/AgendaButler-v$($env:VERSION)-windows-$($env:ARCH)-portable.zip" -Force
 
       - name: Build NSIS installer
@@ -267,7 +267,7 @@ jobs:
         run: |
           wails3 generate webview2bootstrapper -dir build/windows/nsis
           $argFlag = if ($env:ARCH -eq "amd64") { "AMD64" } else { "ARM64" }
-          $exePath = (Resolve-Path "bin/agenda-desktop.exe").Path
+          $exePath = (Resolve-Path "bin/agenda.exe").Path
           Push-Location build/windows/nsis
           try {
             makensis "-DARG_WAILS_${argFlag}_BINARY=$exePath" project.nsi
@@ -275,7 +275,7 @@ jobs:
           } finally {
             Pop-Location
           }
-          $nsisOut = "bin/agenda-desktop-$($env:ARCH)-installer.exe"
+          $nsisOut = "bin/agenda-$($env:ARCH)-installer.exe"
           if (-not (Test-Path $nsisOut)) {
             throw "Expected NSIS output not found: $nsisOut"
           }
@@ -356,9 +356,9 @@ jobs:
       - name: Build Linux production binary & validate desktop entry
         run: |
           mkdir -p bin dist
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-desktop .
-          cp build/linux/desktop build/linux/agenda-desktop.desktop
-          desktop-file-validate build/linux/agenda-desktop.desktop
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda .
+          cp build/linux/desktop build/linux/agenda.desktop
+          desktop-file-validate build/linux/agenda.desktop
 
       - name: Package .deb, .rpm, and portable .tar.gz
         env:
@@ -367,8 +367,8 @@ jobs:
           sed -i -E "s|^version:.*|version: \"${VERSION}\"|" build/linux/nfpm/nfpm.yaml
 
           mkdir -p dist/nfpm-out
-          wails3 tool package -name agenda-desktop -format deb -config ./build/linux/nfpm/nfpm.yaml -out ./dist/nfpm-out
-          wails3 tool package -name agenda-desktop -format rpm -config ./build/linux/nfpm/nfpm.yaml -out ./dist/nfpm-out
+          wails3 tool package -name agenda -format deb -config ./build/linux/nfpm/nfpm.yaml -out ./dist/nfpm-out
+          wails3 tool package -name agenda -format rpm -config ./build/linux/nfpm/nfpm.yaml -out ./dist/nfpm-out
 
           DEB_FILE="$(find dist/nfpm-out -maxdepth 1 -name '*.deb' | head -n 1)"
           RPM_FILE="$(find dist/nfpm-out -maxdepth 1 -name '*.rpm' | head -n 1)"
@@ -379,32 +379,32 @@ jobs:
 
           PORTABLE_DIR="dist/portable-stage/AgendaButler-v${VERSION}-linux-amd64"
           mkdir -p "$PORTABLE_DIR"
-          cp bin/agenda-desktop "$PORTABLE_DIR/agenda-desktop"
-          chmod +x "$PORTABLE_DIR/agenda-desktop"
-          cp build/appicon.png "$PORTABLE_DIR/agenda-desktop.png"
-          sed 's|Exec=/usr/local/bin/agenda-desktop|Exec=agenda-desktop|g' build/linux/desktop > "$PORTABLE_DIR/agenda-desktop.desktop"
+          cp bin/agenda "$PORTABLE_DIR/agenda"
+          chmod +x "$PORTABLE_DIR/agenda"
+          cp build/appicon.png "$PORTABLE_DIR/agenda.png"
+          sed 's|Exec=/usr/local/bin/agenda|Exec=agenda|g' build/linux/desktop > "$PORTABLE_DIR/agenda.desktop"
           tar -czf "dist/AgendaButler-v${VERSION}-linux-amd64.tar.gz" -C dist/portable-stage "AgendaButler-v${VERSION}-linux-amd64"
           rm -rf dist/portable-stage
 
       - name: Package .AppImage
         run: |
           WORK_DIR="$(mktemp -d)"
-          cp bin/agenda-desktop "$WORK_DIR/agenda-desktop"
-          cp build/appicon.png "$WORK_DIR/agenda-desktop.png"
-          sed 's|Exec=/usr/local/bin/agenda-desktop|Exec=agenda-desktop|g' build/linux/desktop > "$WORK_DIR/agenda-desktop.desktop"
+          cp bin/agenda "$WORK_DIR/agenda"
+          cp build/appicon.png "$WORK_DIR/agenda.png"
+          sed 's|Exec=/usr/local/bin/agenda|Exec=agenda|g' build/linux/desktop > "$WORK_DIR/agenda.desktop"
           BUILD_SCRIPT="$(pwd)/build/linux/appimage/build.sh"
 
           (
             cd "$WORK_DIR"
-            APP_NAME="agenda-desktop" \
-            APP_BINARY="./agenda-desktop" \
-            ICON_PATH="./agenda-desktop.png" \
-            DESKTOP_FILE="./agenda-desktop.desktop" \
+            APP_NAME="agenda" \
+            APP_BINARY="./agenda" \
+            ICON_PATH="./agenda.png" \
+            DESKTOP_FILE="./agenda.desktop" \
             bash "$BUILD_SCRIPT"
           )
 
-          chmod +x "$WORK_DIR/agenda-desktop.AppImage"
-          mv "$WORK_DIR/agenda-desktop.AppImage" "dist/AgendaButler-v${VERSION}-linux-x86_64.AppImage"
+          chmod +x "$WORK_DIR/agenda.AppImage"
+          mv "$WORK_DIR/agenda.AppImage" "dist/AgendaButler-v${VERSION}-linux-x86_64.AppImage"
           rm -rf "$WORK_DIR"
 
           (

@@ -10,229 +10,229 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function AddReminder(req: $models.CreateReminderRequest): $CancellablePromise<$models.Reminder | null> {
-    return $Call.ByID(1239006019, req);
+    return $Call.ByID(2181650734, req);
 }
 
 export function AnalyzeScheduleConflicts(): $CancellablePromise<string> {
-    return $Call.ByID(1253855338);
+    return $Call.ByID(2738726565);
 }
 
 export function ArchiveOldEndedReminders(days: number): $CancellablePromise<number> {
-    return $Call.ByID(2030064670, days);
+    return $Call.ByID(3275132337, days);
 }
 
 export function AutoResolveConflict(reminderID: string): $CancellablePromise<$models.Reminder | null> {
-    return $Call.ByID(3449272537, reminderID);
+    return $Call.ByID(2924701112, reminderID);
 }
 
 export function BackupDatabase(): $CancellablePromise<string> {
-    return $Call.ByID(177974081);
+    return $Call.ByID(678755558);
 }
 
 export function BatchAddTag(ids: string[] | null, tag: string): $CancellablePromise<void> {
-    return $Call.ByID(3916094467, ids, tag);
+    return $Call.ByID(1440731130, ids, tag);
 }
 
 export function BatchDelete(ids: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2939180609, ids);
+    return $Call.ByID(398038372, ids);
 }
 
 export function BatchSetPinned(ids: string[] | null, pinned: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3887204312, ids, pinned);
+    return $Call.ByID(1638253735, ids, pinned);
 }
 
 export function BatchSetPriority(ids: string[] | null, priority: string): $CancellablePromise<void> {
-    return $Call.ByID(3029542210, ids, priority);
+    return $Call.ByID(1218617681, ids, priority);
 }
 
 export function BatchSetStatus(ids: string[] | null, status: string): $CancellablePromise<void> {
-    return $Call.ByID(4149331712, ids, status);
+    return $Call.ByID(1362072471, ids, status);
 }
 
 export function BatchSetSubtasks(ids: string[] | null, subtasks: string): $CancellablePromise<void> {
-    return $Call.ByID(349501502, ids, subtasks);
+    return $Call.ByID(2035171285, ids, subtasks);
 }
 
 export function ChatWithAI(userMessages: $models.AIChatMessage[] | null): $CancellablePromise<string> {
-    return $Call.ByID(1419997546, userMessages);
+    return $Call.ByID(3623203377, userMessages);
 }
 
 export function CheckConflict(scheduledAt: string, durationMinutes: number, excludeID: string): $CancellablePromise<$models.Reminder[] | null> {
-    return $Call.ByID(2455678072, scheduledAt, durationMinutes, excludeID);
+    return $Call.ByID(23398713, scheduledAt, durationMinutes, excludeID);
 }
 
 export function CheckDatabaseIntegrity(): $CancellablePromise<string> {
-    return $Call.ByID(579892710);
+    return $Call.ByID(897287349);
 }
 
 export function CheckSimilarReminders(title: string, scheduledAt: string, excludeID: string): $CancellablePromise<$models.Reminder[] | null> {
-    return $Call.ByID(1709635570, title, scheduledAt, excludeID);
+    return $Call.ByID(946529231, title, scheduledAt, excludeID);
 }
 
 export function CheckTimeConflicts(scheduledAt: string, durationMinutes: number, excludeID: string): $CancellablePromise<$models.Reminder[] | null> {
-    return $Call.ByID(801661606, scheduledAt, durationMinutes, excludeID);
+    return $Call.ByID(1378480689, scheduledAt, durationMinutes, excludeID);
 }
 
 export function ClearAIChatHistory(): $CancellablePromise<void> {
-    return $Call.ByID(540686253);
+    return $Call.ByID(635738626);
 }
 
 export function ClearDeliveryHistory(): $CancellablePromise<void> {
-    return $Call.ByID(3326010293);
+    return $Call.ByID(914744686);
 }
 
 export function DeleteReminder(id: string): $CancellablePromise<void> {
-    return $Call.ByID(4115567951, id);
+    return $Call.ByID(722065704, id);
 }
 
 export function DuplicateReminder(id: string, newScheduledAt: string): $CancellablePromise<$models.Reminder | null> {
-    return $Call.ByID(1294891545, id, newScheduledAt);
+    return $Call.ByID(508279756, id, newScheduledAt);
 }
 
 export function EmptyTrash(): $CancellablePromise<void> {
-    return $Call.ByID(545608635);
+    return $Call.ByID(9055008);
 }
 
 export function ExportCSV(): $CancellablePromise<string> {
-    return $Call.ByID(2444324096);
+    return $Call.ByID(2595451777);
 }
 
 export function ExportICS(): $CancellablePromise<string> {
-    return $Call.ByID(1320833257);
+    return $Call.ByID(398595880);
 }
 
 export function FindLowDensitySlot(dateStr: string, durationMinutes: number): $CancellablePromise<string> {
-    return $Call.ByID(3666995547, dateStr, durationMinutes);
+    return $Call.ByID(2937861408, dateStr, durationMinutes);
 }
 
 export function FindOptimalFreeSlot(dateStr: string, durationMinutes: number): $CancellablePromise<string> {
-    return $Call.ByID(2452632011, dateStr, durationMinutes);
+    return $Call.ByID(2651934602, dateStr, durationMinutes);
 }
 
 export function GenerateDailyBriefing(): $CancellablePromise<string> {
-    return $Call.ByID(2347907018);
+    return $Call.ByID(2606411603);
 }
 
 export function GetAIChatHistory(): $CancellablePromise<$models.AIChatRecord[] | null> {
-    return $Call.ByID(396373650);
+    return $Call.ByID(4275454317);
 }
 
 export function GetAIConfig(): $CancellablePromise<$models.AIConfig | null> {
-    return $Call.ByID(2618474290);
+    return $Call.ByID(226825327);
 }
 
 export function GetBackupsList(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2120543445);
+    return $Call.ByID(520180402);
 }
 
 export function GetDatabaseStats(): $CancellablePromise<{ [_ in string]?: any } | null> {
-    return $Call.ByID(3744169734);
+    return $Call.ByID(1349459053);
 }
 
 export function GetDeliveryHistory(reminderID: string): $CancellablePromise<$models.DeliveryRecord[] | null> {
-    return $Call.ByID(235918334, reminderID);
+    return $Call.ByID(334980213, reminderID);
 }
 
 export function GetOverdueReminders(): $CancellablePromise<$models.Reminder[] | null> {
-    return $Call.ByID(4035351313);
+    return $Call.ByID(1299331760);
 }
 
 export function GetReminder(id: string): $CancellablePromise<$models.Reminder | null> {
-    return $Call.ByID(2319126200, id);
+    return $Call.ByID(3415975889, id);
 }
 
 export function GetReminders(): $CancellablePromise<$models.Reminder[] | null> {
-    return $Call.ByID(1710770577);
+    return $Call.ByID(671671302);
 }
 
 export function GetSettings(): $CancellablePromise<{ [_ in string]?: string } | null> {
-    return $Call.ByID(1169938179);
+    return $Call.ByID(2735206094);
 }
 
 export function GetStats(): $CancellablePromise<$models.Stats | null> {
-    return $Call.ByID(3629835213);
+    return $Call.ByID(3084316862);
 }
 
 export function GetTagsSummary(): $CancellablePromise<{ [_ in string]?: number } | null> {
-    return $Call.ByID(1963863113);
+    return $Call.ByID(3682410322);
 }
 
 export function GetTrashReminders(): $CancellablePromise<$models.Reminder[] | null> {
-    return $Call.ByID(3845525019);
+    return $Call.ByID(2831272610);
 }
 
 export function ImportCSVContent(content: string): $CancellablePromise<number> {
-    return $Call.ByID(1148935782, content);
+    return $Call.ByID(2646714965, content);
 }
 
 export function ImportICS(content: string): $CancellablePromise<number> {
-    return $Call.ByID(3205893064, content);
+    return $Call.ByID(230590329, content);
 }
 
 export function ImportJSONBackup(jsonContent: string): $CancellablePromise<number> {
-    return $Call.ByID(772800143, jsonContent);
+    return $Call.ByID(3184751644, jsonContent);
 }
 
 export function OptimizeDatabase(): $CancellablePromise<string> {
-    return $Call.ByID(3438898996);
+    return $Call.ByID(3147384471);
 }
 
 export function ParseMultipleRemindersWithAI(input: string): $CancellablePromise<$models.CreateReminderRequest[] | null> {
-    return $Call.ByID(2627529534, input);
+    return $Call.ByID(76933469, input);
 }
 
 export function PermanentDelete(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1206092387, id);
+    return $Call.ByID(1870418430, id);
 }
 
 export function PolishReminderWithAI(rawText: string): $CancellablePromise<$models.PolishResult | null> {
-    return $Call.ByID(2936513299, rawText);
+    return $Call.ByID(3420956696, rawText);
 }
 
 export function RestoreDatabase(backupPath: string): $CancellablePromise<void> {
-    return $Call.ByID(4154856109, backupPath);
+    return $Call.ByID(2643996920, backupPath);
 }
 
 export function RestoreReminder(id: string): $CancellablePromise<void> {
-    return $Call.ByID(696221462, id);
+    return $Call.ByID(2042128847, id);
 }
 
 export function RevealInFinder(targetPath: string): $CancellablePromise<void> {
-    return $Call.ByID(2025046988, targetPath);
+    return $Call.ByID(2573482487, targetPath);
 }
 
 export function SaveAIChatMessage(id: string, role: string, content: string, actionsJSON: string): $CancellablePromise<void> {
-    return $Call.ByID(3205931582, id, role, content, actionsJSON);
+    return $Call.ByID(3713881851, id, role, content, actionsJSON);
 }
 
 export function SaveAIConfig(cfg: $models.AIConfig): $CancellablePromise<void> {
-    return $Call.ByID(3413777251, cfg);
+    return $Call.ByID(1552140716, cfg);
 }
 
 export function SaveSettings(settings: { [_ in string]?: string } | null): $CancellablePromise<void> {
-    return $Call.ByID(3999828570, settings);
+    return $Call.ByID(3062113321, settings);
 }
 
 export function TestAIConnection(baseURL: string, apiKey: string, model: string): $CancellablePromise<string> {
-    return $Call.ByID(886767632, baseURL, apiKey, model);
+    return $Call.ByID(3577035699, baseURL, apiKey, model);
 }
 
 export function TogglePinReminder(id: string): $CancellablePromise<$models.Reminder | null> {
-    return $Call.ByID(3990151067, id);
+    return $Call.ByID(904608502, id);
 }
 
 export function TriggerTestNotification(title: string, message: string): $CancellablePromise<string> {
-    return $Call.ByID(524942953, title, message);
+    return $Call.ByID(1976229244, title, message);
 }
 
 export function UpdateReminder(req: $models.UpdateReminderRequest): $CancellablePromise<$models.Reminder | null> {
-    return $Call.ByID(307450081, req);
+    return $Call.ByID(1744055078, req);
 }
 
 export function UpdateSubtasks(id: string, subtasks: string): $CancellablePromise<void> {
-    return $Call.ByID(1899366615, id, subtasks);
+    return $Call.ByID(997044932, id, subtasks);
 }
 
 export function VacuumDatabase(): $CancellablePromise<void> {
-    return $Call.ByID(2913669120);
+    return $Call.ByID(3578148371);
 }

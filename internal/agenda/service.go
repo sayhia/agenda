@@ -169,7 +169,7 @@ func (s *AgendaService) GetBackupsList() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(home, ".agenda-desktop", "backups")
+	dir := filepath.Join(home, ".agenda", "backups")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -764,7 +764,7 @@ func (s *AgendaService) GetDatabaseStats() (map[string]interface{}, error) {
 	integrity, _ := s.db.CheckIntegrity()
 
 	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, ".agenda-desktop", "agenda.db")
+	dbPath := filepath.Join(home, ".agenda", "agenda.db")
 	var fileSize int64 = 0
 	if fi, err := os.Stat(dbPath); err == nil {
 		fileSize = fi.Size()

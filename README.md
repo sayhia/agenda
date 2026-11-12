@@ -10,7 +10,7 @@
 | :--- | :--- | :--- |
 | **桌面框架** | **Wails v3.1.0** (`github.com/wailsapp/wails/v3`) | 轻量极速原生桌面框架，支持 macOS 磨砂半透明背景 (Translucent Backdrop) 与隐式标题栏 |
 | **宿主后台** | **Golang 1.27** | 高性能原生进程、后台秒级调度引擎、系统原生弹窗通知调度 (AppleScript/osascript) |
-| **持久层数据库** | **SQLite** (`modernc.org/sqlite`) | 纯 Go 零 CGO 嵌入式关系型数据库，开箱即用，自动迁移，存储于 `~/.agenda-desktop/agenda.db` |
+| **持久层数据库** | **SQLite** (`modernc.org/sqlite`) | 纯 Go 零 CGO 嵌入式关系型数据库，开箱即用，自动迁移，存储于 `~/.agenda/agenda.db` |
 | **AI 大模型接入** | **OpenAI Compatible REST API** (`internal/agenda/ai.go`) | 原生支持 **DeepSeek**、**OpenAI (GPT-4o)**、**本地 Ollama**、**通义千问 (Qwen)** 等多模型，零外部依赖 |
 | **前端界面** | **Vue 3 (Composition API / `<script setup>`)** | 响应式声明式 UI，模块化组件拆分 |
 | **编程语言** | **TypeScript 5.9** | 强类型安全保障，包含 Wails 自动生成的 Go-TS 服务双向绑定 |
@@ -84,7 +84,7 @@
 ## 📁 目录结构 (Project Layout)
 
 ```text
-agenda-desktop/
+agenda/
 ├── main.go                     # Wails3 应用初始化、Mac 磨砂窗口配置与调度器启动
 ├── internal/
 │   └── agenda/
@@ -95,7 +95,7 @@ agenda-desktop/
 │       ├── csv.go              # CSV 导出与导入解析
 │       └── ics.go              # iCalendar RFC 5545 导出与导入解析
 ├── bin/
-│   └── agenda-desktop          # 编译完成的独立桌面可执行程序 (~22 MB)
+│   └── agenda                  # 编译完成的独立桌面可执行程序 (~22 MB)
 └── frontend/                   # Vue 3 + TypeScript 前端工程
     ├── src/
     │   ├── App.vue             # 主界面布局与状态协同
@@ -115,7 +115,7 @@ agenda-desktop/
     │       ├── BatchActionBar.vue      # 底部批量操作胶囊浮条
     │       ├── SettingsModal.vue       # 系统设置与 AI 大模型配置面板
     │       └── ToastNotice.vue         # 悬浮轻吐司通知
-    └── bindings/agenda-desktop/internal/agenda # Wails3 自动生成的强类型 TS/JS 绑定
+    └── bindings/agenda/internal/agenda # Wails3 自动生成的强类型 TS/JS 绑定
 ```
 
 ---
@@ -130,10 +130,10 @@ cd frontend && npm ci && npm test && npm run build && cd ..
 go vet ./... && go test -count=1 -v ./...
 
 # 3. 编译并生成单文件桌面二进制
-go build -o bin/agenda-desktop .
+go build -o bin/agenda .
 
 # 4. 启动桌面应用
-./bin/agenda-desktop
+./bin/agenda
 ```
 启动后即可在独立的桌面窗口中体验完整的 AI 智能日程管家！
 

@@ -20,8 +20,8 @@ import {
   TriggerTestNotification,
   DuplicateReminder,
   RestoreReminder,
-} from '../bindings/agenda-desktop/internal/agenda/agendaservice';
-import type { Reminder, DeliveryRecord, UpdateReminderRequest } from '../bindings/agenda-desktop/internal/agenda/models';
+} from '../bindings/agenda/internal/agenda/agendaservice';
+import type { Reminder, DeliveryRecord, UpdateReminderRequest } from '../bindings/agenda/internal/agenda/models';
 import type { ParsedReminder } from './utils/nlp';
 import { formatDateLabel } from './utils/format';
 import { playReminderChime, playCompleteSound } from './utils/audio';

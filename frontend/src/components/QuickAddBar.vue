@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
-import { ParseMultipleRemindersWithAI } from '../../bindings/agenda-desktop/internal/agenda/agendaservice';
-import type { CreateReminderRequest } from '../../bindings/agenda-desktop/internal/agenda/models';
+import { ParseMultipleRemindersWithAI } from '../../bindings/agenda/internal/agenda/agendaservice';
+import type { CreateReminderRequest } from '../../bindings/agenda/internal/agenda/models';
 import { parseReminderTags } from '../domain/reminder';
 import { formatDateLabel, formatRepeatLabel, formatTime } from '../utils/format';
 import { parseNaturalReminder, type ParsedReminder } from '../utils/nlp';
