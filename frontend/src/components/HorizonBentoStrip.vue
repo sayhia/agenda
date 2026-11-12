@@ -74,20 +74,31 @@ const todayStats = computed(() => {
 
 const nextUpcoming = computed(() => {
   const nowMs = props.nowTick || Date.now();
-  let best: Reminder | null = null;
-  let bestTime = Infinity;
+  let bestFuture: Reminder | null = null;
+  let bestFutureTime = Infinity;
+  let bestOverdue: Reminder | null = null;
+  let bestOverdueTime = -Infinity;
 
   for (const r of props.reminders) {
     if (r.status !== 'active') continue;
     const t = new Date(r.scheduled_at).getTime();
     if (Number.isNaN(t)) continue;
-    if (t < bestTime) {
-      bestTime = t;
-      best = r;
+    if (t >= nowMs - 60000) {
+      if (t < bestFutureTime) {
+        bestFutureTime = t;
+        bestFuture = r;
+      }
+    } else {
+      if (t > bestOverdueTime) {
+        bestOverdueTime = t;
+        bestOverdue = r;
+      }
     }
   }
 
+  const best = bestFuture || bestOverdue;
   if (!best) return null;
+  const bestTime = bestFuture ? bestFutureTime : bestOverdueTime;
   const diffMin = Math.round((bestTime - nowMs) / 60000);
   let badge = '';
   let state: 'normal' | 'soon' | 'overdue' = 'normal';
@@ -251,7 +262,7 @@ function toggleDay(key: string) {
 <style scoped>
 .horizon-bento {
   display: grid;
-  grid-template-columns: minmax(196px, 0.78fr) minmax(300px, 1.4fr) minmax(200px, 0.85fr);
+  grid-template-columns: minmax(170px, 0.72fr) minmax(280px, 1.38fr) minmax(210px, 0.9fr);
   gap: 8px;
   align-items: stretch;
 }
@@ -468,8 +479,8 @@ function toggleDay(key: string) {
 
 /* Tile 3: Efficiency Pulse + Next Up Signal Card */
 .bento-next-signal {
-  --signal-color: var(--tide, #46b7ff);
-  --signal-text: var(--tide-text, var(--accent-text));
+  --signal-color: #ff8b1a;
+  --signal-text: #ffa048;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -484,26 +495,27 @@ function toggleDay(key: string) {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.bento-next-signal.soon {
-  --signal-color: #ff8b1a;
-  --signal-text: #ffb45c;
-  border-color: color-mix(in srgb, #ff8b1a 32%, var(--border-subtle));
-}
-
 .bento-next-signal.overdue {
   --signal-color: var(--danger);
   --signal-text: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 42%, var(--border-subtle));
 }
 
-:global([data-theme="daylight"]) .bento-next-signal.soon {
+:global([data-theme="daylight"]) .bento-next-signal {
   --signal-color: #d97706;
   --signal-text: #b45309;
 }
 
+:global([data-theme="daylight"]) .bento-next-signal.overdue {
+  --signal-color: var(--danger);
+  --signal-text: var(--danger);
+}
+
 .bento-next-signal:disabled {
   cursor: default;
-  opacity: 0.78;
+  opacity: 0.75;
+  --signal-color: var(--text-quaternary);
+  --signal-text: var(--text-tertiary);
 }
 
 .bento-next-signal:not(:disabled):hover {
@@ -519,21 +531,25 @@ function toggleDay(key: string) {
 }
 
 .signal-led {
-  width: 6.5px;
-  height: 6.5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--signal-color);
-  box-shadow: 0 0 8px var(--signal-color);
+  box-shadow: 0 0 10px var(--signal-color), 0 0 4px var(--signal-color);
+  flex: none;
+  display: inline-block;
 }
 
 .next-badge {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-family: var(--font-family);
+  font-size: 11px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 99px;
+  line-height: 1.1;
+  padding: 2.5px 9px;
+  border-radius: 999px;
   background: color-mix(in srgb, var(--signal-color) 16%, transparent);
   color: var(--signal-text);
+  border: 1px solid color-mix(in srgb, var(--signal-color) 32%, transparent);
 }
 
 .signal-body {
@@ -550,9 +566,10 @@ function toggleDay(key: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 650;
   color: var(--text-primary);
+  line-height: 1.3;
 }
 
 .workload-wave-svg {
@@ -562,33 +579,20 @@ function toggleDay(key: string) {
   color: var(--signal-color);
 }
 
-@media (max-width: 1140px) {
+@media (max-width: 920px) {
   .horizon-bento {
-    grid-template-columns: minmax(175px, 0.8fr) minmax(260px, 1.3fr);
-  }
-  .bento-next-signal {
-    grid-column: 1 / -1;
-    padding: 11px 14px;
-    gap: 10px;
-  }
-  .bento-next-signal .next-title {
-    font-size: 13px;
-  }
-  .bento-next-signal .workload-wave-svg {
-    width: 84px;
-    height: 26px;
+    grid-template-columns: minmax(150px, 0.7fr) minmax(230px, 1.3fr) minmax(190px, 0.85fr);
+    gap: 6px;
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 760px) {
   .horizon-bento {
     grid-template-columns: 1fr;
+    gap: 6px;
   }
   .bento-hero-rhythm {
     display: none;
-  }
-  .bento-next-signal {
-    grid-column: 1 / -1;
   }
 }
 </style>

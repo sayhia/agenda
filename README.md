@@ -29,7 +29,8 @@
 
 | 操作系统 | 下载文件 | 架构支持 / 说明 |
 | :--- | :--- | :--- |
-| **macOS** | [`.dmg`](https://github.com/sayhia/agenda/releases/latest) / [`.app.tar.gz`](https://github.com/sayhia/agenda/releases/latest) | Universal 通用架构（原生支持 Apple Silicon M系列 与 Intel 芯片） |
+| **macOS (Apple Silicon)** | [`.dmg`](https://github.com/sayhia/agenda/releases/latest) / [`.app.tar.gz`](https://github.com/sayhia/agenda/releases/latest) | 适配 M1 / M2 / M3 / M4 等 Apple Silicon 芯片 (`arm64`) |
+| **macOS (Intel)** | [`.dmg`](https://github.com/sayhia/agenda/releases/latest) / [`.app.tar.gz`](https://github.com/sayhia/agenda/releases/latest) | 适配 Intel 酷睿处理器机型 (`x64`) |
 | **Windows** | [`.exe` 安装器](https://github.com/sayhia/agenda/releases/latest) / [`.zip` 便携版](https://github.com/sayhia/agenda/releases/latest) | 包含 `amd64` (x64) 与 `arm64` 原生双架构版本，开箱即用 |
 | **Linux** | [`.AppImage`](https://github.com/sayhia/agenda/releases/latest) / [`.deb`](https://github.com/sayhia/agenda/releases/latest) / [`.rpm`](https://github.com/sayhia/agenda/releases/latest) | 适配主流 Linux 发行版（Ubuntu、Debian、Fedora、Arch 等） |
 
@@ -92,24 +93,53 @@
 
 ## 🚀 本地开发与编译
 
-### 环境准备
+### 1. 环境准备
 - **Go**: 1.26 或更高版本
 - **Node.js**: 22 或更高版本 (推荐 Node 24)
-- **Wails 3 CLI**: `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`
+- **Wails 3 CLI**:
+  ```bash
+  go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+  ```
+- **环境检查（可选）**:
+  ```bash
+  wails3 doctor
+  ```
 
-### 快速启动
+### 2. 快速启动 (开发热重载)
+在项目根目录下，使用 Wails 3 启动开发环境：
 ```bash
-# 1. 安装前端依赖并构建前端资源
-cd frontend && npm install && npm run build && cd ..
+# 首次运行安装前端依赖
+cd frontend && npm install && cd ..
 
-# 2. 运行代码检查与单元测试
+# 启动 Wails 3 开发模式（支持前端 Vite 热重载与后端实时监听）
+wails3 dev
+```
+
+### 3. 应用构建与打包
+Wails 3 提供了开箱即用的跨平台构建与分发能力：
+
+```bash
+# 编译本地二进制程序（输出至 bin/ 目录）
+wails3 build
+
+# 运行本地程序
+wails3 task run
+# 或直接运行产物: ./bin/agenda
+
+# 打包为生产分发包（macOS .dmg/.app、Windows 安装包、Linux .AppImage 等）
+wails3 package
+```
+
+### 4. 常用任务与测试
+```bash
+# 运行单元测试与静态检查
 go vet ./... && go test -count=1 ./...
 
-# 3. 编译二进制桌面程序
-go build -tags production -trimpath -ldflags="-w -s" -o bin/agenda .
+# 查看所有可用构建任务
+wails3 task --list
 
-# 4. 运行应用
-./bin/agenda
+# 编译纯 HTTP 服务端模式 (无 GUI)
+wails3 task build:server
 ```
 
 ---

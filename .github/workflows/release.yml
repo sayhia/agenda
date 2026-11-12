@@ -107,33 +107,16 @@ jobs:
       - name: Run Go tests
         run: go test -count=1 -v ./...
 
-      - name: Build macOS amd64 & arm64 binaries and create Universal binary
-        run: |
-          mkdir -p bin dist dmg-staging
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-amd64 .
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/agenda-arm64 .
-          lipo -create -output bin/agenda-universal bin/agenda-amd64 bin/agenda-arm64
-          lipo -info bin/agenda-universal
-
-      - name: Assemble & sign Agenda Butler.app bundle
+      - name: Build macOS Apple Silicon (arm64) & Intel (x64) release packages
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_DEVELOPER_IDENTITY: ${{ secrets.APPLE_DEVELOPER_IDENTITY }}
         run: |
-          APP_BUNDLE="bin/Agenda Butler.app"
-          rm -rf "$APP_BUNDLE"
-          mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
-          cp bin/agenda-universal "$APP_BUNDLE/Contents/MacOS/agenda"
-          chmod +x "$APP_BUNDLE/Contents/MacOS/agenda"
-          cp build/darwin/icons.icns "$APP_BUNDLE/Contents/Resources/"
-          cp build/darwin/Assets.car "$APP_BUNDLE/Contents/Resources/"
-          cp build/darwin/Info.plist "$APP_BUNDLE/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$APP_BUNDLE/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$APP_BUNDLE/Contents/Info.plist"
+          mkdir -p bin dist
 
           if [[ -n "$APPLE_CERTIFICATE_P12" && -n "$APPLE_DEVELOPER_IDENTITY" ]]; then
-            echo "Signing with Developer ID certificate..."
+            echo "Setting up keychain with Developer ID certificate..."
             KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
             KEYCHAIN_PASS="temp-ci-keychain-pass"
             echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
@@ -143,31 +126,61 @@ jobs:
             security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
             security list-keychain -d user -s "$KEYCHAIN_PATH"
             security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-            codesign --force --deep --options runtime --timestamp --sign "$APPLE_DEVELOPER_IDENTITY" "$APP_BUNDLE"
-          else
-            echo "No Apple Developer ID secrets configured; applying ad-hoc codesign..."
-            codesign --force --deep --sign - "$APP_BUNDLE"
           fi
-          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
-      - name: Package headless DMG, app tarball & checksums
-        run: |
-          cp -R "bin/Agenda Butler.app" dmg-staging/
-          ln -sfn /Applications dmg-staging/Applications
-          hdiutil create \
-            -volname "Agenda Butler" \
-            -srcfolder dmg-staging \
-            -ov \
-            -format UDZO \
-            "dist/AgendaButler-v${VERSION}-macos-universal.dmg"
-          tar -czf "dist/AgendaButler-v${VERSION}-macos-universal.app.tar.gz" -C bin "Agenda Butler.app"
-          (cd dist && shasum -a 256 "AgendaButler-v${VERSION}-macos-universal.dmg" > "AgendaButler-v${VERSION}-macos-universal.dmg.sha256" && shasum -a 256 "AgendaButler-v${VERSION}-macos-universal.app.tar.gz" > "AgendaButler-v${VERSION}-macos-universal.app.tar.gz.sha256")
+          for TARGET in "arm64:arm64:arm64" "amd64:x64:x86_64"; do
+            GOARCH="$(echo "$TARGET" | cut -d: -f1)"
+            FILE_ARCH="$(echo "$TARGET" | cut -d: -f2)"
+            CLANG_ARCH="$(echo "$TARGET" | cut -d: -f3)"
+            echo "=========================================="
+            echo "Building macOS package for ${GOARCH} (${FILE_ARCH}) via clang -arch ${CLANG_ARCH}..."
+            echo "=========================================="
+
+            CGO_ENABLED=1 CC="clang -arch ${CLANG_ARCH}" CGO_CFLAGS="-arch ${CLANG_ARCH}" CGO_LDFLAGS="-arch ${CLANG_ARCH}" GOOS=darwin GOARCH=${GOARCH} go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o "bin/agenda-${GOARCH}" .
+
+            APP_BUNDLE="bin/Agenda Butler.app"
+            rm -rf "$APP_BUNDLE" dmg-staging
+            mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" dmg-staging
+
+            cp "bin/agenda-${GOARCH}" "$APP_BUNDLE/Contents/MacOS/agenda"
+            chmod +x "$APP_BUNDLE/Contents/MacOS/agenda"
+            cp build/darwin/icons.icns "$APP_BUNDLE/Contents/Resources/"
+            cp build/darwin/Assets.car "$APP_BUNDLE/Contents/Resources/"
+            cp build/darwin/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$APP_BUNDLE/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$APP_BUNDLE/Contents/Info.plist"
+
+            if [[ -n "$APPLE_CERTIFICATE_P12" && -n "$APPLE_DEVELOPER_IDENTITY" ]]; then
+              echo "Signing with Developer ID certificate..."
+              codesign --force --deep --options runtime --timestamp --sign "$APPLE_DEVELOPER_IDENTITY" "$APP_BUNDLE"
+            else
+              echo "No Apple Developer ID secrets configured; applying ad-hoc codesign..."
+              codesign --force --deep --sign - "$APP_BUNDLE"
+            fi
+            codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+            cp -R "$APP_BUNDLE" dmg-staging/
+            ln -sfn /Applications dmg-staging/Applications
+            DMG_NAME="AgendaButler-v${VERSION}-macos-${FILE_ARCH}.dmg"
+            TAR_NAME="AgendaButler-v${VERSION}-macos-${FILE_ARCH}.app.tar.gz"
+
+            hdiutil create \
+              -volname "Agenda Butler" \
+              -srcfolder dmg-staging \
+              -ov \
+              -format UDZO \
+              "dist/${DMG_NAME}"
+
+            tar -czf "dist/${TAR_NAME}" -C bin "Agenda Butler.app"
+            (cd dist && shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256" && shasum -a 256 "${TAR_NAME}" > "${TAR_NAME}.sha256")
+          done
+
           ls -lh dist
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-universal
+          name: macos-packages
           path: dist/*
           if-no-files-found: error
 
