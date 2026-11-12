@@ -13,6 +13,10 @@ mkdir -p "${APP_DIR}/usr/bin"
 cp -r "${APP_BINARY}" "${APP_DIR}/usr/bin/"
 cp "${ICON_PATH}" "${APP_DIR}/"
 cp "${DESKTOP_FILE}" "${APP_DIR}/"
+chmod -R a+rX "${APP_DIR}"
+chmod +x "${APP_DIR}/usr/bin/"*
+
+export LDAI_NO_CHECK_PERMISSIONS=1
 
 if [[ $(uname -m) == *x86_64* ]]; then
     # Download linuxdeploy and make it executable
