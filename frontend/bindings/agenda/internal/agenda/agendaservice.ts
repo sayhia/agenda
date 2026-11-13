@@ -73,6 +73,10 @@ export function CheckTimeConflicts(scheduledAt: string, durationMinutes: number,
     return $Call.ByID(1378480689, scheduledAt, durationMinutes, excludeID);
 }
 
+export function CleanExpiredTrash(retentionDays: number): $CancellablePromise<number> {
+    return $Call.ByID(1995180231, retentionDays);
+}
+
 export function ClearAIChatHistory(): $CancellablePromise<void> {
     return $Call.ByID(635738626);
 }
