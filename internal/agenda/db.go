@@ -431,7 +431,7 @@ func (d *DB) CreateReminder(req CreateReminderRequest) (*Reminder, error) {
 	_, _ = d.db.Exec(`
 		INSERT INTO delivery_records (id, reminder_id, delivered_at, prompt, status, error)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, fmt.Sprintf("rec_%d", time.Now().UnixNano()), id, now, "日程创建入库", "created", "")
+	`, generateID("rec"), id, now, "日程创建入库", "created", "")
 
 	return &Reminder{
 		ID:              id,
@@ -488,12 +488,12 @@ func (d *DB) UpdateReminder(req UpdateReminderRequest) (*Reminder, error) {
 		_, _ = d.db.Exec(`
 			INSERT INTO delivery_records (id, reminder_id, delivered_at, prompt, status, error)
 			VALUES (?, ?, ?, ?, ?, ?)
-		`, fmt.Sprintf("rec_%d", time.Now().UnixNano()), req.ID, now, "事项标记完结", "completed", "")
+		`, generateID("rec"), req.ID, now, "事项标记完结", "completed", "")
 	} else if status == "paused" {
 		_, _ = d.db.Exec(`
 			INSERT INTO delivery_records (id, reminder_id, delivered_at, prompt, status, error)
 			VALUES (?, ?, ?, ?, ?, ?)
-		`, fmt.Sprintf("rec_%d", time.Now().UnixNano()), req.ID, now, "事项已暂停", "paused", "")
+		`, generateID("rec"), req.ID, now, "事项已暂停", "paused", "")
 	}
 
 	return &Reminder{
