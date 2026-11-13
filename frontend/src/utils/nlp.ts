@@ -188,8 +188,17 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
     hasExplicitDate = true;
     input = input.replace(fullDateMatch[0], ' ');
   } else {
+    const nextNextMonthMatch = input.match(/(?:下下个?月|下下月)\s*(\d{1,2})[号日]/);
     const nextMonthMatch = input.match(/(?:下个?月|下月)\s*(\d{1,2})[号日]/);
-    if (nextMonthMatch) {
+    if (nextNextMonthMatch) {
+      const d = parseInt(nextNextMonthMatch[1], 10);
+      const target = new Date(now.getFullYear(), now.getMonth() + 2, d);
+      targetYear = target.getFullYear();
+      targetMonth = target.getMonth();
+      targetDate = target.getDate();
+      hasExplicitDate = true;
+      input = input.replace(nextNextMonthMatch[0], ' ');
+    } else if (nextMonthMatch) {
       const d = parseInt(nextMonthMatch[1], 10);
       const nextDate = new Date(now.getFullYear(), now.getMonth() + 1, d);
       targetYear = nextDate.getFullYear();
@@ -264,6 +273,21 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
       hasTime = true;
     }
     input = input.replace(/今天|今日|今晚/i, ' ');
+  }
+
+  // Relative Days offset (e.g. 3天后 / 5天后 / 两天后)
+  const daysLaterMatch = input.match(/(\d+|[一二两三四五六七八九十]+)\s*天后/i);
+  if (daysLaterMatch) {
+    const num = parseChineseOrArabicNum(daysLaterMatch[1]);
+    if (num > 0) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + num);
+      targetYear = d.getFullYear();
+      targetMonth = d.getMonth();
+      targetDate = d.getDate();
+      hasExplicitDate = true;
+      input = input.replace(daysLaterMatch[0], ' ');
+    }
   }
 
   // Consecutive Days phrase (e.g. 连续3天 / 接下来5天)

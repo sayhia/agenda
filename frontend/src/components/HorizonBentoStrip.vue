@@ -169,25 +169,6 @@ const nextUpcoming = computed(() => {
   return { reminder: best, badge, state, time: formatTime(best.scheduled_at) };
 });
 
-// Compute smooth SVG polyline path for the 7-day workload pulse wave (Project Roadmap style)
-const pulseWave = computed(() => {
-  const counts = days.value.map((d) => d.count);
-  const max = Math.max(3, ...counts);
-  const w = 132;
-  const h = 30;
-  const pts = counts.map((c, idx) => {
-    const x = (idx / Math.max(1, counts.length - 1)) * w;
-    const y = h - 4 - (c / max) * (h - 10);
-    return { x, y, c };
-  });
-
-  const line = pts
-    .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
-    .join(' ');
-  const area = `${line} L ${w} ${h} L 0 ${h} Z`;
-  return { line, area, pts };
-});
-
 function toggleDay(key: string) {
   emit('select-date', props.selectedDate === key ? null : key);
 }
@@ -256,7 +237,7 @@ function toggleDay(key: string) {
       </button>
     </div>
 
-    <!-- Bento 3: Project Roadmap Efficiency Wave + Next Up Signal Card -->
+    <!-- Bento 3: Project Roadmap Efficiency Wave + Next Up Signal Card (Pixel-perfect match to Cyberpunk Telemetry Card) -->
     <button
       type="button"
       class="bento-tile bento-next-signal st-reticle"
@@ -278,21 +259,27 @@ function toggleDay(key: string) {
       </div>
 
       <div class="signal-body">
-        <span class="next-title">
-          {{ nextUpcoming ? `${nextUpcoming.time} · ${nextUpcoming.reminder.title}` : '所有待办已清空' }}
-        </span>
+        <div class="next-title-group" v-if="nextUpcoming">
+          <span class="next-time tabular-nums">{{ nextUpcoming.time }}</span>
+          <span class="next-dot">·</span>
+          <span class="next-title">{{ nextUpcoming.reminder.title }}</span>
+        </div>
+        <span v-else class="next-empty-label">所有待办已清空</span>
 
-        <!-- Mini 7-day SVG Pulse Wave -->
-        <svg class="workload-wave-svg" viewBox="0 0 132 30" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="st-wave-grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="currentColor" stop-opacity="0.34" />
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <path :d="pulseWave.area" fill="url(#st-wave-grad)" />
-          <path :d="pulseWave.line" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <!-- Sleek Angled Telemetry Ramp Graphic with Soft Gradient Underglow -->
+        <div class="telemetry-wrapper" aria-hidden="true">
+          <svg class="telemetry-slope-svg" viewBox="0 0 96 28" fill="none" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="st-slope-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--signal-color)" stop-opacity="0.32" />
+                <stop offset="100%" stop-color="var(--signal-color)" stop-opacity="0.0" />
+              </linearGradient>
+            </defs>
+            <path d="M 0 4 L 16 22 L 96 22 L 96 28 L 0 28 Z" fill="url(#st-slope-grad)" />
+            <path d="M 0 4 L 16 22 L 96 22" fill="none" stroke="var(--signal-color)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span class="reticle-corner-plus">+</span>
+        </div>
       </div>
     </button>
   </section>
@@ -516,38 +503,57 @@ function toggleDay(key: string) {
   background: var(--border-strong);
 }
 
-/* Tile 3: Efficiency Pulse + Next Up Signal Card */
+/* Tile 3: Cyberpunk / Telemetry Next Up Signal Card */
 .bento-next-signal {
-  --signal-color: #ff8b1a;
-  --signal-text: #ffa048;
+  --signal-color: #f97316;
+  --signal-text: #fdba74;
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 13px;
+  gap: 10px;
+  padding: 11px 15px;
   background:
-    radial-gradient(200px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--signal-color) 12%, transparent), transparent 72%),
-    radial-gradient(circle at 8% 100%, color-mix(in srgb, var(--signal-color) 12%, transparent), transparent 62%),
-    var(--surface);
+    radial-gradient(220px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--signal-color) 14%, transparent), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%),
+    rgba(18, 21, 28, 0.94);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bento-next-signal::before {
+  content: '+';
+  position: absolute;
+  top: 6px;
+  left: 9px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  pointer-events: none;
 }
 
 .bento-next-signal.overdue {
   --signal-color: var(--danger);
   --signal-text: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-subtle));
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border-subtle));
 }
 
 :global([data-theme="daylight"]) .bento-next-signal {
-  --signal-color: #d97706;
-  --signal-text: #b45309;
+  --signal-color: #ea580c;
+  --signal-text: #c2410c;
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.09);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
-:global([data-theme="daylight"]) .bento-next-signal.overdue {
-  --signal-color: var(--danger);
-  --signal-text: var(--danger);
+:global([data-theme="daylight"]) .bento-next-signal::before {
+  color: rgba(0, 0, 0, 0.2);
 }
 
 .bento-next-signal:disabled {
@@ -558,8 +564,9 @@ function toggleDay(key: string) {
 }
 
 .bento-next-signal:not(:disabled):hover {
-  border-color: color-mix(in srgb, var(--signal-color) 48%, var(--border-strong));
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--signal-color) 52%, var(--border-strong));
+  transform: translateY(-1.5px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36), 0 0 16px color-mix(in srgb, var(--signal-color) 18%, transparent);
 }
 
 .signal-top-row {
@@ -567,36 +574,104 @@ function toggleDay(key: string) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.signal-top-row .mono-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #8c93a0;
+  text-transform: uppercase;
 }
 
 .signal-led {
-  width: 7px;
-  height: 7px;
+  width: 7.5px;
+  height: 7.5px;
   border-radius: 50%;
   background: var(--signal-color);
-  box-shadow: 0 0 10px var(--signal-color), 0 0 4px var(--signal-color);
+  box-shadow:
+    0 0 8px var(--signal-color),
+    0 0 16px color-mix(in srgb, var(--signal-color) 80%, transparent),
+    0 0 24px color-mix(in srgb, var(--signal-color) 40%, transparent);
   flex: none;
   display: inline-block;
+  animation: signal-glow-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes signal-glow-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(0.92);
+  }
 }
 
 .next-badge {
   font-family: var(--font-family);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
-  line-height: 1.1;
-  padding: 2.5px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--signal-color) 16%, transparent);
+  line-height: 1;
+  padding: 3.5px 10px;
+  border-radius: 9999px;
+  background: #251b14;
   color: var(--signal-text);
-  border: 1px solid color-mix(in srgb, var(--signal-color) 32%, transparent);
+  border: 1px solid color-mix(in srgb, var(--signal-color) 26%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+:global([data-theme="daylight"]) .next-badge {
+  background: rgba(234, 88, 12, 0.1);
+  border-color: rgba(234, 88, 12, 0.2);
 }
 
 .signal-body {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.next-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.next-time {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  flex: none;
+}
+
+:global([data-theme="daylight"]) .next-time {
+  color: #0f172a;
+}
+
+.next-dot {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
+  flex: none;
+}
+
+:global([data-theme="daylight"]) .next-dot {
+  color: rgba(15, 23, 42, 0.45);
 }
 
 .next-title {
@@ -605,17 +680,48 @@ function toggleDay(key: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text-primary);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #ffffff;
   line-height: 1.3;
 }
 
-.workload-wave-svg {
-  width: 76px;
+:global([data-theme="daylight"]) .next-title {
+  color: #1e293b;
+}
+
+.next-empty-label {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.telemetry-wrapper {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex: none;
+}
+
+.telemetry-slope-svg {
+  width: 82px;
   height: 24px;
   flex: none;
-  color: var(--signal-color);
+}
+
+.reticle-corner-plus {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.25);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  pointer-events: none;
+}
+
+:global([data-theme="daylight"]) .reticle-corner-plus {
+  color: rgba(0, 0, 0, 0.25);
 }
 
 @media (max-width: 920px) {

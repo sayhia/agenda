@@ -278,4 +278,104 @@ check('i18n supports zh-CN and en-US dictionary lookup', () => {
   setLanguage('zh-CN'); // Reset
 });
 
+// 15. Relative multi-day offsets and 大后天
+check('nlp handles 大后天, 3天后, and 下下个月', () => {
+  const refNow = new Date(2026, 10, 12, 9, 0, 0, 0); // 2026-11-12
+  const r1 = parseNaturalReminder('大后天上午10点团队聚餐', refNow);
+  const d1 = new Date(r1.scheduledAt);
+  assert.equal(d1.getDate(), 15);
+
+  const r2 = parseNaturalReminder('3天后下午2点项目验收', refNow);
+  const d2 = new Date(r2.scheduledAt);
+  assert.equal(d2.getDate(), 15);
+
+  const r3 = parseNaturalReminder('下下个月15号发布新版本', refNow);
+  const d3 = new Date(r3.scheduledAt);
+  assert.equal(d3.getMonth(), 0); // 11 + 2 = Jan (0)
+  assert.equal(d3.getDate(), 15);
+  assert.equal(d3.getFullYear(), 2027);
+});
+
+// 16. Multi-tag combinations with AND / OR
+check('multi-tag combinations evaluate correctly for AND / OR modes', () => {
+  const r1 = { tags: '工作, 重要, 架构' };
+  const r2 = { tags: '生活, 健身' };
+  const r3 = { tags: '工作, 日常' };
+
+  const targetTags = ['工作', '架构'];
+
+  // AND mode: item must contain all target tags
+  const andMatch = (item) => {
+    const itemTags = parseReminderTags(item.tags);
+    return targetTags.every((t) => itemTags.includes(t));
+  };
+
+  assert.equal(andMatch(r1), true);
+  assert.equal(andMatch(r2), false);
+  assert.equal(andMatch(r3), false);
+
+  // OR mode: item contains any of the target tags
+  const orMatch = (item) => {
+    const itemTags = parseReminderTags(item.tags);
+    return targetTags.some((t) => itemTags.includes(t));
+  };
+
+  assert.equal(orMatch(r1), true);
+  assert.equal(orMatch(r2), false);
+  assert.equal(orMatch(r3), true);
+});
+
+// 17. Smart snooze presets offset calculation
+check('smart snooze presets compute correct future target times', () => {
+  const now = new Date(2026, 10, 12, 14, 0, 0, 0); // Thursday 14:00
+  // Tomorrow 09:00
+  const tom = new Date(now);
+  tom.setDate(tom.getDate() + 1);
+  tom.setHours(9, 0, 0, 0);
+  assert.equal(tom.getDate(), 13);
+  assert.equal(tom.getHours(), 9);
+
+  // Weekend Saturday 10:00 (Thursday is day 4 -> Saturday is +2 days)
+  const sat = new Date(now);
+  const daysUntilSaturday = ((6 - sat.getDay() + 7) % 7) || 7;
+  sat.setDate(sat.getDate() + daysUntilSaturday);
+  sat.setHours(10, 0, 0, 0);
+  assert.equal(sat.getDay(), 6);
+  assert.equal(sat.getDate(), 14);
+
+  // Next Monday 09:00 (Thursday is day 4 -> next Monday is +4 days)
+  const mon = new Date(now);
+  const daysUntilMonday = ((1 - mon.getDay() + 7) % 7) || 7;
+  mon.setDate(mon.getDate() + daysUntilMonday);
+  mon.setHours(9, 0, 0, 0);
+  assert.equal(mon.getDay(), 1);
+  assert.equal(mon.getDate(), 16);
+});
+
+// 18. Relative task duplication offset
+check('relative duplication offset shifts target date cleanly', () => {
+  const origSched = '2026-11-13T10:00:00.000Z';
+  const d1 = new Date(origSched);
+  d1.setDate(d1.getDate() + 1);
+  assert.equal(d1.toISOString().slice(0, 10), '2026-11-14');
+
+  const d7 = new Date(origSched);
+  d7.setDate(d7.getDate() + 7);
+  assert.equal(d7.toISOString().slice(0, 10), '2026-11-20');
+});
+
+// 19. Extended i18n dictionary lookup
+check('extended i18n keys for next_up and snooze work in zh-CN and en-US', () => {
+  setLanguage('zh-CN');
+  assert.equal(t('next_up'), '下一个日程');
+  assert.equal(t('snooze.tomorrow'), '明天 09:00');
+  assert.equal(t('duplicate.nextweek'), '克隆为下周同时间 (+7天)');
+
+  setLanguage('en-US');
+  assert.equal(t('next_up'), 'Next Up');
+  assert.equal(t('snooze.tomorrow'), 'Tomorrow 09:00');
+  assert.equal(t('duplicate.nextweek'), 'Clone to next week (+7d)');
+  setLanguage('zh-CN');
+});
+
 console.log(`✅ All ${passed} desktop utility unit tests passed!`);

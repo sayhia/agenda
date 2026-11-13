@@ -580,6 +580,23 @@ function triggerBreakdownTemplate() {
   });
 }
 
+function applyPromptTemplate(template: string) {
+  if (template === '拆解 5 步里程碑') {
+    inputPrompt.value = '请帮我将以下任务目标拆解为 5 个清晰可交付的里程碑日程，并估算耗时与优先级：\n【目标】：';
+  } else if (template === '今日时间箱 Timebox') {
+    inputPrompt.value = '请帮我为今日待办安排高效的「时间箱 (Timeboxing)」工作流，合理设置专注块与中场休息。';
+  } else if (template === '排查今日重叠冲突') {
+    void triggerConflictCheck();
+    return;
+  } else if (template === '提炼行动动词与核心产出') {
+    inputPrompt.value = '请帮我优化以下待办清单的标题，统一使用明确的强动词开头（如「编写/联调/交付」），并明确核心交付物：\n';
+  }
+  void nextTick(() => {
+    resizeComposer();
+    textareaRef.value?.focus();
+  });
+}
+
 function openSlashFromButton() {
   if (!inputPrompt.value.startsWith('/')) {
     inputPrompt.value = `/${inputPrompt.value}`;
@@ -1150,6 +1167,22 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
               <strong>{{ item.label }}</strong>
               <small>{{ item.desc }}</small>
             </div>
+          </button>
+        </div>
+
+        <!-- Quick AI Prompt Suggestion Chips (R57) -->
+        <div class="quick-prompt-chips" role="toolbar" aria-label="快捷提示词模板">
+          <button type="button" class="prompt-chip" title="目标拆解为里程碑" @click="applyPromptTemplate('拆解 5 步里程碑')">
+            <span class="chip-icon">🎯</span><span>5步里程碑</span>
+          </button>
+          <button type="button" class="prompt-chip" title="时间箱排期规划" @click="applyPromptTemplate('今日时间箱 Timebox')">
+            <span class="chip-icon">⏱️</span><span>今日时间箱</span>
+          </button>
+          <button type="button" class="prompt-chip" title="诊断日程时间重叠" @click="applyPromptTemplate('排查今日重叠冲突')">
+            <span class="chip-icon">⚡</span><span>排查冲突</span>
+          </button>
+          <button type="button" class="prompt-chip" title="优化行动动词" @click="applyPromptTemplate('提炼行动动词与核心产出')">
+            <span class="chip-icon">💡</span><span>强动词提炼</span>
           </button>
         </div>
 
@@ -2292,6 +2325,42 @@ button.tele-chip.alert:hover:not(:disabled) {
 .slash-copy small {
   font-size: 10px;
   color: var(--text-tertiary);
+}
+
+.quick-prompt-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: none;
+}
+.quick-prompt-chips::-webkit-scrollbar {
+  display: none;
+}
+.prompt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4.5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--motion-fast);
+}
+.prompt-chip:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+  transform: translateY(-0.5px);
+}
+.prompt-chip .chip-icon {
+  font-size: 11.5px;
 }
 
 .composer-box {

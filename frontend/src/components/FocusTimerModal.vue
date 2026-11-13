@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
-import { playFocusCompleteChime } from '../utils/audio';
+import {
+  playFocusCompleteChime,
+  startAmbientSound,
+  stopAmbientSound,
+  type AmbientSound,
+} from '../utils/audio';
 
 const props = defineProps<{ visible: boolean; reminder: Reminder | null }>();
 const emit = defineEmits<{
@@ -10,8 +15,38 @@ const emit = defineEmits<{
   (e: 'toast', msg: string, type: 'success' | 'error' | 'info'): void;
 }>();
 
-const FOCUS_DURATION = 25 * 60;
-const BREAK_DURATION = 5 * 60;
+const focusPresets = [15, 25, 50];
+const breakPresets = [5, 15];
+
+const selectedFocusMinutes = ref(25);
+const selectedBreakMinutes = ref(5);
+
+const activeAmbient = ref<AmbientSound>('none');
+const ambientOptions: { id: AmbientSound; name: string }[] = [
+  { id: 'none', name: '静音' },
+  { id: 'rain', name: '舒缓雨声' },
+  { id: 'alpha', name: 'Alpha专注波' },
+  { id: 'whitenoise', name: '柔和白噪' },
+];
+
+function toggleAmbient(sound: AmbientSound) {
+  activeAmbient.value = sound;
+  if (isRunning.value) {
+    if (sound === 'none') {
+      stopAmbientSound();
+    } else {
+      startAmbientSound(sound);
+    }
+  }
+}
+
+function selectFocusPreset(minutes: number) {
+  selectedFocusMinutes.value = minutes;
+  if (!isBreak.value && !isRunning.value) {
+    secondsLeft.value = minutes * 60;
+  }
+}
+
 const STORAGE_KEY = 'agenda_focus_session';
 const DAILY_FOCUS_KEY_PREFIX = 'agenda_focus_daily_';
 
@@ -42,8 +77,8 @@ function recordFocusSession(minutes: number) {
 }
 
 const isBreak = ref(false);
-const totalSeconds = computed(() => isBreak.value ? BREAK_DURATION : FOCUS_DURATION);
-const secondsLeft = ref(FOCUS_DURATION);
+const totalSeconds = computed(() => isBreak.value ? selectedBreakMinutes.value * 60 : selectedFocusMinutes.value * 60);
+const secondsLeft = ref(25 * 60);
 const isRunning = ref(false);
 const sessionReminderId = ref('');
 let endAt: number | null = null;
@@ -83,6 +118,9 @@ function startTimer() {
   if (secondsLeft.value <= 0) secondsLeft.value = totalSeconds.value;
   endAt = Date.now() + secondsLeft.value * 1000;
   isRunning.value = true;
+  if (activeAmbient.value !== 'none') {
+    startAmbientSound(activeAmbient.value);
+  }
   persistSession();
   ensureTicker();
 }
@@ -92,6 +130,7 @@ function pauseTimer() {
   isRunning.value = false;
   endAt = null;
   clearTicker();
+  stopAmbientSound();
   persistSession();
 }
 
@@ -104,6 +143,7 @@ function resetTimer() {
   isRunning.value = false;
   endAt = null;
   clearTicker();
+  stopAmbientSound();
   secondsLeft.value = totalSeconds.value;
   persistSession();
 }
@@ -112,6 +152,7 @@ function switchMode(toBreak: boolean) {
   isRunning.value = false;
   endAt = null;
   clearTicker();
+  stopAmbientSound();
   isBreak.value = toBreak;
   secondsLeft.value = totalSeconds.value;
   persistSession();
@@ -121,11 +162,12 @@ function handleTimerComplete() {
   isRunning.value = false;
   endAt = null;
   clearTicker();
+  stopAmbientSound();
   playFocusCompleteChime();
   if (!isBreak.value) {
     recordFocusSession(Math.round(totalSeconds.value / 60));
   }
-  emit('toast', isBreak.value ? '休息结束，可以开始下一轮专注' : '专注时段结束，休息五分钟吧', isBreak.value ? 'info' : 'success');
+  emit('toast', isBreak.value ? '休息结束，可以开始下一轮专注' : '专注时段结束，休息一下吧', isBreak.value ? 'info' : 'success');
   isBreak.value = !isBreak.value;
   secondsLeft.value = totalSeconds.value;
   persistSession();
@@ -168,6 +210,7 @@ watch(() => props.visible, (visible) => {
 
 onUnmounted(() => {
   clearTicker();
+  stopAmbientSound();
   if (isRunning.value) persistSession();
 });
 </script>
@@ -179,7 +222,7 @@ onUnmounted(() => {
       <div class="focus-head">
         <div class="focus-badge" :class="{ 'is-break': isBreak, running: isRunning }">
           <span class="mode-dot"></span>
-          <span>{{ isBreak ? 'REST SESSION · 5M BREAK' : 'DEEP FOCUS · 25M POMODORO' }}</span>
+          <span>{{ isBreak ? `REST SESSION · ${selectedBreakMinutes}M BREAK` : `DEEP FOCUS · ${selectedFocusMinutes}M POMODORO` }}</span>
         </div>
         <div class="focus-head-right">
           <span v-if="todayFocusMinutes > 0" class="daily-focus-chip">今日 {{ todayFocusMinutes }}m</span>
@@ -237,6 +280,36 @@ onUnmounted(() => {
         <div class="timer-center-text">
           <span class="timer-digits tabular-nums">{{ displayTime }}</span>
           <span class="timer-phase">{{ isBreak ? 'REST MODE' : 'T-MINUS FOCUS' }}</span>
+        </div>
+      </div>
+
+      <!-- Presets & Ambient Sound Bar -->
+      <div class="focus-preset-ambient-bar">
+        <div class="preset-pill-group" role="group" aria-label="专注时长预设">
+          <button
+            v-for="p in (isBreak ? breakPresets : focusPresets)"
+            :key="p"
+            type="button"
+            class="preset-pill-btn"
+            :class="{ active: (isBreak ? selectedBreakMinutes : selectedFocusMinutes) === p }"
+            :disabled="isRunning"
+            @click="isBreak ? (selectedBreakMinutes = p) : selectFocusPreset(p)"
+          >
+            {{ p }}m
+          </button>
+        </div>
+
+        <div class="ambient-pill-group" role="group" aria-label="背景白噪">
+          <button
+            v-for="opt in ambientOptions"
+            :key="opt.id"
+            type="button"
+            class="ambient-pill-btn"
+            :class="{ active: activeAmbient === opt.id }"
+            @click="toggleAmbient(opt.id)"
+          >
+            {{ opt.name }}
+          </button>
         </div>
       </div>
 
@@ -476,6 +549,55 @@ onUnmounted(() => {
   background: var(--lime);
   color: var(--ink-on-lime);
   box-shadow: 0 6px 18px color-mix(in srgb, var(--lime) 38%, transparent);
+}
+
+.focus-preset-ambient-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.preset-pill-group,
+.ambient-pill-group {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.preset-pill-btn,
+.ambient-pill-btn {
+  padding: 3.5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--fill-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.preset-pill-btn:hover:not(:disabled),
+.ambient-pill-btn:hover {
+  background: var(--fill-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.preset-pill-btn.active,
+.ambient-pill-btn.active {
+  background: color-mix(in srgb, var(--tide) 18%, transparent);
+  border-color: var(--tide);
+  color: var(--tide);
+  font-weight: 700;
+}
+
+.preset-pill-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .focus-foot {

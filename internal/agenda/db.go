@@ -557,6 +557,21 @@ func (d *DB) EmptyTrash() error {
 	return err
 }
 
+func (d *DB) CleanExpiredTrash(retentionDays int) (int64, error) {
+	if retentionDays <= 0 {
+		retentionDays = 30
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	cutoff := time.Now().AddDate(0, 0, -retentionDays).Format(time.RFC3339)
+	res, err := d.db.Exec("DELETE FROM reminders WHERE COALESCE(deleted_at, '') != '' AND deleted_at < ?", cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (d *DB) GetTrashReminders() ([]Reminder, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -632,11 +647,15 @@ func (d *DB) OptimizeDatabase() (string, error) {
 		return "", fmt.Errorf("数据库完整性异常: %s", integrity)
 	}
 
+	cutoff := time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
+	purgedRes, _ := d.db.Exec("DELETE FROM reminders WHERE COALESCE(deleted_at, '') != '' AND deleted_at < ?", cutoff)
+	purgedCount, _ := purgedRes.RowsAffected()
+
 	if _, err := d.db.Exec("VACUUM;"); err != nil {
 		return "", fmt.Errorf("整理碎片失败: %w", err)
 	}
 
-	return "数据库检测正常 (Integrity: OK)，已完成碎片整理与索引重建 (VACUUM 成功)", nil
+	return fmt.Sprintf("数据库检测正常 (Integrity: OK)，已自动清理超过30天的废纸篓历史 (%d 项)，完成碎片整理与索引重建 (VACUUM 成功)", purgedCount), nil
 }
 
 func (d *DB) BatchSetStatus(ids []string, status string) error {

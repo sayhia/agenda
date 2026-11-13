@@ -315,6 +315,13 @@ func (s *AgendaService) EmptyTrash() error {
 	return s.db.EmptyTrash()
 }
 
+func (s *AgendaService) CleanExpiredTrash(retentionDays int) (int64, error) {
+	if s.db == nil {
+		return 0, errors.New("database not initialized")
+	}
+	return s.db.CleanExpiredTrash(retentionDays)
+}
+
 func (s *AgendaService) DuplicateReminder(id string, newScheduledAt string) (*Reminder, error) {
 	if s.db == nil {
 		return nil, errors.New("database not initialized")

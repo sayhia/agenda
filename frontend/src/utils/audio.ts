@@ -159,3 +159,99 @@ export function playCompleteSound(volume: number = 0.2): void {
 export function playFocusCompleteChime(): void {
   playReminderChime(0.35, 'crystal');
 }
+
+export type AmbientSound = 'none' | 'rain' | 'alpha' | 'whitenoise';
+
+let ambientSourceNode: AudioNode | null = null;
+let ambientGainNode: GainNode | null = null;
+
+export function stopAmbientSound(): void {
+  try {
+    if (ambientGainNode) {
+      ambientGainNode.gain.linearRampToValueAtTime(0.0001, 0.2);
+    }
+    if (ambientSourceNode) {
+      setTimeout(() => {
+        try {
+          (ambientSourceNode as any)?.stop?.();
+          ambientSourceNode?.disconnect();
+          ambientSourceNode = null;
+          ambientGainNode = null;
+        } catch {}
+      }, 250);
+    }
+  } catch {}
+}
+
+export function startAmbientSound(sound: AmbientSound, volume: number = 0.25): void {
+  stopAmbientSound();
+  if (sound === 'none') return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(Math.max(0.01, Math.min(1, volume)), ctx.currentTime + 0.3);
+    gain.connect(ctx.destination);
+    ambientGainNode = gain;
+
+    if (sound === 'alpha') {
+      // 10Hz Alpha wave focus beat (216Hz + 226Hz)
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc2.type = 'sine';
+      osc1.frequency.setValueAtTime(216, ctx.currentTime);
+      osc2.frequency.setValueAtTime(226, ctx.currentTime);
+
+      const subGain = ctx.createGain();
+      subGain.gain.setValueAtTime(0.35, ctx.currentTime);
+      osc1.connect(subGain);
+      osc2.connect(subGain);
+      subGain.connect(gain);
+
+      osc1.start();
+      osc2.start();
+      ambientSourceNode = osc1;
+      return;
+    }
+
+    // Procedural noise buffer (Rain / White noise)
+    const bufferSize = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    let lastOut = 0.0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      if (sound === 'rain') {
+        data[i] = (lastOut + 0.02 * white) / 1.02;
+        lastOut = data[i];
+        data[i] *= 3.5;
+      } else {
+        data[i] = white * 0.15;
+      }
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    noise.loop = true;
+
+    if (sound === 'rain') {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, ctx.currentTime);
+      noise.connect(filter);
+      filter.connect(gain);
+    } else {
+      noise.connect(gain);
+    }
+
+    noise.start();
+    ambientSourceNode = noise;
+  } catch (e) {
+    console.warn('Ambient sound failed:', e);
+  }
+}

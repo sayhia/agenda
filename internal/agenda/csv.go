@@ -61,7 +61,12 @@ func looksLikeCSVHeader(record []string) bool {
 	if len(record) > 1 {
 		c1 = strings.ToLower(strings.TrimSpace(record[1]))
 	}
-	return c0 == "id" || c0 == "标题" || c0 == "title" || c0 == "summary" || c1 == "标题" || c1 == "title"
+	for _, cand := range []string{c0, c1} {
+		if cand == "id" || cand == "标题" || cand == "title" || cand == "summary" || cand == "task" || cand == "任务" || cand == "事项" || cand == "content" {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeCSVPriority(raw string) string {
@@ -123,15 +128,15 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 				for i, col := range record {
 					name := strings.ToLower(strings.TrimSpace(col))
 					switch name {
-					case "标题", "title", "summary":
+					case "标题", "title", "summary", "task", "事项", "任务", "content":
 						headerMap["title"] = i
-					case "时间", "计划时间", "scheduled_at", "time", "date":
+					case "时间", "计划时间", "scheduled_at", "time", "date", "due", "due_date", "截止", "截止时间", "提醒时间":
 						headerMap["scheduled_at"] = i
-					case "优先级", "priority":
+					case "优先级", "priority", "level", "urgency":
 						headerMap["priority"] = i
-					case "重复", "repeat_rule", "repeat":
+					case "重复", "repeat_rule", "repeat", "frequency":
 						headerMap["repeat_rule"] = i
-					case "标签", "tags":
+					case "标签", "tags", "category", "分类", "类别":
 						headerMap["tags"] = i
 					case "持续时间", "持续", "时长", "duration", "duration_minutes":
 						headerMap["duration"] = i
@@ -139,11 +144,11 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 						headerMap["lead"] = i
 					case "时区", "timezone":
 						headerMap["timezone"] = i
-					case "备注", "notes", "description":
+					case "备注", "notes", "description", "detail", "details", "说明", "详情":
 						headerMap["notes"] = i
-					case "子任务", "subtasks":
+					case "子任务", "subtasks", "checklist", "items", "子项":
 						headerMap["subtasks"] = i
-					case "置顶", "pinned", "is_pinned":
+					case "置顶", "pinned", "is_pinned", "star", "重要度":
 						headerMap["is_pinned"] = i
 					}
 				}

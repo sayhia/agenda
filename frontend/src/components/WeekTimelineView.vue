@@ -126,6 +126,23 @@ const dayRemindersMap = computed(() => {
   return map;
 });
 
+const dayPeriodSummary = computed(() => {
+  const summary: Record<string, { morning: number; afternoon: number; evening: number; total: number }> = {};
+  for (const day of weekDays.value) {
+    const list = dayRemindersMap.value[day.dateStr] || [];
+    let m = 0, a = 0, e = 0;
+    for (const r of list) {
+      const d = new Date(r.scheduled_at);
+      const hr = d.getHours();
+      if (hr < 12) m++;
+      else if (hr < 18) a++;
+      else e++;
+    }
+    summary[day.dateStr] = { morning: m, afternoon: a, evening: e, total: list.length };
+  }
+  return summary;
+});
+
 interface EventInterval {
   reminder: Reminder;
   start: number;
@@ -274,6 +291,16 @@ function delayToTomorrow(reminder: Reminder) {
       >
         <span class="day-title">{{ day.label }}</span>
         <span v-if="day.isToday" class="today-dot">今日</span>
+        <!-- Period Distribution Heat Strip -->
+        <div
+          v-if="dayPeriodSummary[day.dateStr]?.total > 0"
+          class="period-heat-strip"
+          :title="`上午:${dayPeriodSummary[day.dateStr].morning} 下午:${dayPeriodSummary[day.dateStr].afternoon} 晚间:${dayPeriodSummary[day.dateStr].evening}`"
+        >
+          <span class="heat-bar morning" :class="{ filled: dayPeriodSummary[day.dateStr].morning > 0 }"></span>
+          <span class="heat-bar afternoon" :class="{ filled: dayPeriodSummary[day.dateStr].afternoon > 0 }"></span>
+          <span class="heat-bar evening" :class="{ filled: dayPeriodSummary[day.dateStr].evening > 0 }"></span>
+        </div>
       </div>
     </div>
 
@@ -458,6 +485,30 @@ function delayToTomorrow(reminder: Reminder) {
   background: var(--tide);
   color: var(--ink-on-accent);
 }
+
+.period-heat-strip {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+  margin-top: 3px;
+}
+
+.heat-bar {
+  width: 10px;
+  height: 2.5px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  opacity: 0.35;
+  transition: all 0.2s ease;
+}
+
+.heat-bar.filled {
+  opacity: 1;
+}
+
+.heat-bar.morning.filled { background: var(--tide); }
+.heat-bar.afternoon.filled { background: var(--warning); }
+.heat-bar.evening.filled { background: var(--accent); }
 
 .timeline-grid-body {
   display: flex;

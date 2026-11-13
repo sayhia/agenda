@@ -13,7 +13,8 @@ import {
   highlightMatch,
 } from '../utils/format';
 import { getTagColor } from '../utils/tagColors';
-import { RevealInFinder } from '../../bindings/agenda/internal/agenda/agendaservice';
+import { RevealInFinder, AutoResolveConflict } from '../../bindings/agenda/internal/agenda/agendaservice';
+import { checkTimeConflict } from '../utils/conflict.ts';
 import { parseReminderSubtasks, parseReminderTags } from '../domain/reminder';
 import ScrolltideSelect from './ScrolltideSelect.vue';
 
@@ -47,6 +48,7 @@ const emit = defineEmits<{
   (e: 'update-subtasks', id: string, subtasks: string): void;
   (e: 'filter-tag', tag: string): void;
   (e: 'duplicate', reminder: Reminder): void;
+  (e: 'duplicate-offset', reminder: Reminder, offsetDays: number): void;
   (e: 'start-focus', reminder: Reminder): void;
   (e: 'update-title', reminder: Reminder, newTitle: string): void;
   (e: 'update-priority', reminder: Reminder, priority: string): void;
@@ -146,6 +148,55 @@ function handleInspectorDeleteSubtask(r: Reminder, idx: number) {
   const list = getSubtasks(r);
   list.splice(idx, 1);
   emit('update-subtasks', r.id, JSON.stringify(list));
+}
+
+const inspectorConflict = computed(() => {
+  if (!activeInspectorReminder.value || activeInspectorReminder.value.status !== 'active') {
+    return { hasConflict: false, conflicts: [] };
+  }
+  return checkTimeConflict(
+    activeInspectorReminder.value.scheduled_at,
+    activeInspectorReminder.value.duration_minutes || 30,
+    props.reminders,
+    activeInspectorReminder.value.id
+  );
+});
+
+async function handleAutoDeconflict(r: Reminder) {
+  if (!inspectorConflict.value.suggestedTime) return;
+  try {
+    const updated = await AutoResolveConflict(r.id);
+    if (updated) {
+      emit('toast', `已自动顺延至 ${inspectorConflict.value.suggestedTimeLabel} 避开冲突`, 'success');
+    }
+  } catch {
+    emit('snooze', r, 30);
+    emit('toast', '已为您顺延 30 分钟避开冲突', 'success');
+  }
+}
+
+function handleMoveSubtask(r: Reminder, idx: number, direction: -1 | 1) {
+  const list = getSubtasks(r);
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= list.length) return;
+  const temp = list[idx];
+  list[idx] = list[targetIdx];
+  list[targetIdx] = temp;
+  emit('update-subtasks', r.id, JSON.stringify(list));
+}
+
+function handleToggleNoteChecklist(r: Reminder, lineIndex: number) {
+  if (!r.notes) return;
+  const lines = r.notes.split('\n');
+  if (lineIndex < 0 || lineIndex >= lines.length) return;
+  const line = lines[lineIndex];
+  if (line.includes('- [ ]')) {
+    lines[lineIndex] = line.replace('- [ ]', '- [x]');
+  } else if (line.includes('- [x]') || line.includes('- [X]')) {
+    lines[lineIndex] = line.replace(/- \[[xX]\]/, '- [ ]');
+  }
+  const newNotes = lines.join('\n');
+  emit('edit', { ...r, notes: newNotes });
 }
 
 function handleRowSelectClick(e: MouseEvent, r: Reminder, currentList: Reminder[]) {
@@ -517,6 +568,37 @@ function toggleSnoozeMenu(id: string) {
 function handleQuickSnooze(r: Reminder, minutes: number) {
   activeSnoozeMenuId.value = null;
   emit('snooze', r, minutes);
+}
+
+function snoozeToTomorrowMorning(r: Reminder) {
+  activeSnoozeMenuId.value = null;
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  const diffMin = Math.max(1, Math.round((d.getTime() - Date.now()) / 60000));
+  emit('snooze', r, diffMin);
+}
+
+function snoozeToWeekend(r: Reminder) {
+  activeSnoozeMenuId.value = null;
+  const d = new Date();
+  const day = d.getDay();
+  const daysUntilSaturday = ((6 - day + 7) % 7) || 7;
+  d.setDate(d.getDate() + daysUntilSaturday);
+  d.setHours(10, 0, 0, 0);
+  const diffMin = Math.max(1, Math.round((d.getTime() - Date.now()) / 60000));
+  emit('snooze', r, diffMin);
+}
+
+function snoozeToNextMonday(r: Reminder) {
+  activeSnoozeMenuId.value = null;
+  const d = new Date();
+  const day = d.getDay();
+  const daysUntilMonday = ((1 - day + 7) % 7) || 7;
+  d.setDate(d.getDate() + daysUntilMonday);
+  d.setHours(9, 0, 0, 0);
+  const diffMin = Math.max(1, Math.round((d.getTime() - Date.now()) / 60000));
+  emit('snooze', r, diffMin);
 }
 
 const inlineEditingId = ref<string | null>(null);
@@ -949,14 +1031,15 @@ function handleInlineAddSubtask(r: Reminder) {
                   </svg>
                 </button>
 
-                <!-- Snooze Presets Popover Menu (Round 8) -->
+                <!-- Snooze Presets Popover Menu (Round 8, enhanced in R51) -->
                 <div v-if="activeSnoozeMenuId === r.id" class="snooze-dropdown glass-panel">
-                  <div class="snooze-menu-head">推迟/顺延提醒:</div>
+                  <div class="snooze-menu-head">智能推迟 / 顺延:</div>
                   <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 15)">+15 分钟</button>
                   <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 30)">+30 分钟</button>
                   <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 60)">+1 小时</button>
-                  <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 24 * 60)">推迟至明天</button>
-                  <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 7 * 24 * 60)">推迟至下周</button>
+                  <button class="snooze-opt-btn" @click="snoozeToTomorrowMorning(r)">明早 09:00</button>
+                  <button class="snooze-opt-btn" @click="snoozeToWeekend(r)">本周末 (周六)</button>
+                  <button class="snooze-opt-btn" @click="snoozeToNextMonday(r)">下周一 09:00</button>
                 </div>
               </div>
 
@@ -1089,10 +1172,25 @@ function handleInlineAddSubtask(r: Reminder) {
           </div>
 
           <div class="inspector-snooze-chips">
-            <button class="snooze-chip" @click="$emit('snooze', activeInspectorReminder, 15)">+15分</button>
-            <button class="snooze-chip" @click="$emit('snooze', activeInspectorReminder, 60)">+1小时</button>
-            <button class="snooze-chip" @click="$emit('snooze', activeInspectorReminder, 24 * 60)">+1天</button>
-            <button class="snooze-chip" @click="$emit('snooze', activeInspectorReminder, 7 * 24 * 60)">+1周</button>
+            <button class="snooze-chip" title="推迟15分钟" @click="$emit('snooze', activeInspectorReminder, 15)">+15分</button>
+            <button class="snooze-chip" title="推迟1小时" @click="$emit('snooze', activeInspectorReminder, 60)">+1小时</button>
+            <button class="snooze-chip" title="推迟至明天上午09:00" @click="snoozeToTomorrowMorning(activeInspectorReminder)">明早9点</button>
+            <button class="snooze-chip" title="推迟至下周一上午09:00" @click="snoozeToNextMonday(activeInspectorReminder)">下周一</button>
+          </div>
+
+          <!-- Conflict Alert & Auto-Deconflict (R47) -->
+          <div v-if="inspectorConflict.hasConflict" class="inspector-conflict-card">
+            <div class="conflict-head">
+              <span class="conflict-warning-badge">⚠️ 时间冲突</span>
+              <span class="conflict-msg">与「{{ inspectorConflict.conflicts[0]?.title }}」时段重叠</span>
+            </div>
+            <button
+              type="button"
+              class="auto-deconflict-btn"
+              @click="handleAutoDeconflict(activeInspectorReminder)"
+            >
+              一键顺延避冲 (建议 {{ inspectorConflict.suggestedTimeLabel }})
+            </button>
           </div>
         </div>
 
@@ -1124,6 +1222,22 @@ function handleInlineAddSubtask(r: Reminder) {
                 @click.stop="handleToggleSubtaskItem(activeInspectorReminder, idx)"
               />
               <span class="inspector-st-text" :class="{ done: st.done }">{{ st.title }}</span>
+              <div class="subtask-reorder-btns" @click.stop>
+                <button
+                  type="button"
+                  class="reorder-btn"
+                  title="上移"
+                  :disabled="idx === 0"
+                  @click="handleMoveSubtask(activeInspectorReminder, idx, -1)"
+                >▲</button>
+                <button
+                  type="button"
+                  class="reorder-btn"
+                  title="下移"
+                  :disabled="idx === viewModel(activeInspectorReminder).subtasks.length - 1"
+                  @click="handleMoveSubtask(activeInspectorReminder, idx, 1)"
+                >▼</button>
+              </div>
               <button
                 class="inspector-st-del"
                 title="删除子项"
@@ -1165,11 +1279,28 @@ function handleInlineAddSubtask(r: Reminder) {
           </div>
         </div>
 
-        <!-- Notes Section -->
+        <!-- Notes Section (R53: Interactive Checklist) -->
         <div v-if="activeInspectorReminder.notes" class="inspector-section">
           <label class="inspector-field-label">详细备注</label>
           <div class="inspector-notes-box">
-            {{ activeInspectorReminder.notes }}
+            <template v-for="(line, lineIdx) in activeInspectorReminder.notes.split('\n')" :key="lineIdx">
+              <div
+                v-if="line.trim().startsWith('- [ ]') || line.trim().startsWith('- [x]') || line.trim().startsWith('- [X]')"
+                class="note-checklist-line"
+                @click="handleToggleNoteChecklist(activeInspectorReminder, lineIdx)"
+              >
+                <input
+                  type="checkbox"
+                  :checked="line.includes('- [x]') || line.includes('- [X]')"
+                  class="note-check-box"
+                  readonly
+                />
+                <span :class="{ 'line-done': line.includes('- [x]') || line.includes('- [X]') }">
+                  {{ line.replace(/- \[[ xX]\]/, '').trim() }}
+                </span>
+              </div>
+              <p v-else class="note-plain-line">{{ line }}</p>
+            </template>
           </div>
         </div>
 
@@ -1244,20 +1375,29 @@ function handleInlineAddSubtask(r: Reminder) {
       </button>
       <div class="ctx-divider" role="separator"></div>
       <button class="ctx-item" role="menuitem" @click="handleQuickSnooze(contextMenu.reminder!, 15); closeContextMenu(true)">
-        <span>⏰ 延后 15 分钟</span>
+        <span>⏰ 顺延 15 分钟</span>
       </button>
       <button class="ctx-item" role="menuitem" @click="handleQuickSnooze(contextMenu.reminder!, 60); closeContextMenu(true)">
-        <span>⏰ 延后 1 小时</span>
+        <span>⏰ 顺延 1 小时</span>
       </button>
-      <button class="ctx-item" role="menuitem" @click="handleQuickSnooze(contextMenu.reminder!, 24 * 60); closeContextMenu(true)">
-        <span>📅 延后至明天此时</span>
+      <button class="ctx-item" role="menuitem" @click="snoozeToTomorrowMorning(contextMenu.reminder!); closeContextMenu(true)">
+        <span>🌅 顺延至明天 09:00</span>
+      </button>
+      <button class="ctx-item" role="menuitem" @click="snoozeToWeekend(contextMenu.reminder!); closeContextMenu(true)">
+        <span>🏖️ 顺延至本周末 (周六)</span>
+      </button>
+      <button class="ctx-item" role="menuitem" @click="snoozeToNextMonday(contextMenu.reminder!); closeContextMenu(true)">
+        <span>💼 顺延至下周一 09:00</span>
       </button>
       <div class="ctx-divider" role="separator"></div>
       <button v-if="contextMenu.reminder!.status !== 'ended'" class="ctx-item" role="menuitem" @click="emit('toggle-pause', contextMenu.reminder!); closeContextMenu(true)">
         <span>{{ contextMenu.reminder!.status === 'paused' ? '恢复提醒' : '暂停提醒' }}</span>
       </button>
       <button class="ctx-item" role="menuitem" @click="emit('duplicate', contextMenu.reminder!); closeContextMenu(true)">
-        <span>⧉ 复刻此日程</span>
+        <span>⧉ 复刻排期至明日 (+1天)</span>
+      </button>
+      <button class="ctx-item" role="menuitem" @click="emit('duplicate-offset', contextMenu.reminder!, 7); closeContextMenu(true)">
+        <span>⧉ 克隆为下周同时间 (+7天)</span>
       </button>
       <div class="ctx-divider" role="separator"></div>
       <button class="ctx-item danger" role="menuitem" @click="emit('delete', contextMenu.reminder!.id); closeContextMenu(true)">
@@ -1752,10 +1892,115 @@ function handleInlineAddSubtask(r: Reminder) {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-secondary);
-  white-space: pre-wrap;
   word-break: break-word;
-  max-height: 120px;
+  max-height: 140px;
   overflow-y: auto;
+}
+
+.note-checklist-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.note-checklist-line:hover {
+  background: var(--fill-hover);
+}
+
+.note-check-box {
+  pointer-events: none;
+}
+
+.note-checklist-line .line-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.note-plain-line {
+  margin: 0;
+  padding: 1px 4px;
+}
+
+.subtask-reorder-btns {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.inspector-check-row:hover .subtask-reorder-btns {
+  opacity: 1;
+}
+
+.reorder-btn {
+  background: transparent;
+  border: none;
+  font-size: 8.5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.reorder-btn:hover:not(:disabled) {
+  background: var(--fill-hover);
+  color: var(--text-primary);
+}
+
+.reorder-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.inspector-conflict-card {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conflict-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conflict-warning-badge {
+  font-size: 10px;
+  font-weight: 750;
+  color: var(--danger);
+}
+
+.conflict-msg {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auto-deconflict-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.14s ease;
+}
+
+.auto-deconflict-btn:hover {
+  opacity: 0.88;
 }
 
 .inspector-footer-dock {

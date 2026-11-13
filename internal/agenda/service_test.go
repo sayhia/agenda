@@ -710,3 +710,84 @@ func TestVacuumAndCheckIntegrity(t *testing.T) {
 		t.Errorf("expected OptimizeDatabase to contain 'ok', got %s", res)
 	}
 }
+
+func TestCleanExpiredTrashAndRelativeDuplication(t *testing.T) {
+	svc, d := setupTestDB(t)
+
+	// 1. Create two reminders
+	rOld, err := svc.AddReminder(CreateReminderRequest{
+		Title:       "老旧待清理",
+		ScheduledAt: time.Now().Format(time.RFC3339),
+		Priority:    "p3",
+	})
+	if err != nil {
+		t.Fatalf("AddReminder failed: %v", err)
+	}
+
+	rRecent, err := svc.AddReminder(CreateReminderRequest{
+		Title:       "近期废纸篓",
+		ScheduledAt: time.Now().Format(time.RFC3339),
+		Priority:    "p1",
+	})
+	if err != nil {
+		t.Fatalf("AddReminder failed: %v", err)
+	}
+
+	// Soft-delete both via svc.DeleteReminder
+	if err := svc.DeleteReminder(rOld.ID); err != nil {
+		t.Fatalf("DeleteReminder failed: %v", err)
+	}
+	if err := svc.DeleteReminder(rRecent.ID); err != nil {
+		t.Fatalf("DeleteReminder failed: %v", err)
+	}
+
+	// Backdate rOld.deleted_at to 45 days ago
+	oldDate := time.Now().AddDate(0, 0, -45).Format(time.RFC3339)
+	if _, err := d.db.Exec("UPDATE reminders SET deleted_at = ? WHERE id = ?", oldDate, rOld.ID); err != nil {
+		t.Fatalf("backdating failed: %v", err)
+	}
+
+	// Run CleanExpiredTrash(30)
+	purged, err := svc.CleanExpiredTrash(30)
+	if err != nil {
+		t.Fatalf("CleanExpiredTrash failed: %v", err)
+	}
+	if purged != 1 {
+		t.Errorf("expected 1 reminder purged, got %d", purged)
+	}
+
+	// Verify rOld is gone, rRecent is still in trash
+	trash, err := svc.GetTrashReminders()
+	if err != nil {
+		t.Fatalf("GetTrashReminders failed: %v", err)
+	}
+	if len(trash) != 1 || trash[0].ID != rRecent.ID {
+		t.Errorf("expected only rRecent in trash, got %v", trash)
+	}
+
+	// 2. Test relative duplication
+	newSched := time.Now().AddDate(0, 0, 7).Format(time.RFC3339)
+	activeRem, err := svc.AddReminder(CreateReminderRequest{
+		Title:       "周会模板",
+		ScheduledAt: time.Now().Format(time.RFC3339),
+		Priority:    "p0",
+		Tags:        "周会,例会",
+	})
+	if err != nil {
+		t.Fatalf("AddReminder failed: %v", err)
+	}
+
+	cloned, err := svc.DuplicateReminder(activeRem.ID, newSched)
+	if err != nil {
+		t.Fatalf("DuplicateReminder failed: %v", err)
+	}
+	if cloned.Title != activeRem.Title+" (副本)" {
+		t.Errorf("expected cloned title %s (副本), got %s", activeRem.Title, cloned.Title)
+	}
+	if cloned.ScheduledAt != newSched {
+		t.Errorf("expected cloned scheduled at %s, got %s", newSched, cloned.ScheduledAt)
+	}
+	if cloned.Tags != activeRem.Tags {
+		t.Errorf("expected cloned tags %s, got %s", activeRem.Tags, cloned.Tags)
+	}
+}

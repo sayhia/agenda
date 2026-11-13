@@ -10,6 +10,7 @@ import (
 	"agenda/internal/agenda"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/dock"
 )
 
 //go:embed all:frontend/dist
@@ -39,6 +40,7 @@ func main() {
 	}
 
 	agendaService := agenda.NewAgendaService(db)
+	dockService := dock.New()
 
 	// 2. Initialize Wails v3 Application
 	app := application.New(application.Options{
@@ -46,6 +48,7 @@ func main() {
 		Description: "日程管家桌面版 - 智能自然语言提醒与日程管理",
 		Services: []application.Service{
 			application.NewService(agendaService),
+			application.NewService(dockService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -103,14 +106,23 @@ func main() {
 		}
 		if activeToday > 0 {
 			tray.SetTooltip(fmt.Sprintf("Agenda Butler — 今日尚有 %d 项待办推进中", activeToday))
+			_ = dockService.SetBadge(fmt.Sprintf("%d", activeToday))
 		} else {
 			tray.SetTooltip("Agenda Butler — 今日日程已清空")
+			_ = dockService.RemoveBadge()
 		}
 	}
 	updateTrayStatus()
 
 	app.Event.On("reminders-updated", func(event *application.CustomEvent) {
 		updateTrayStatus()
+	})
+
+	// 3.2 Register System-Wide Global Hotkey (CmdOrCtrl+Alt+A to summon)
+	_ = app.GlobalShortcut.Register("CmdOrCtrl+Alt+A", func() {
+		mainWindow.Show()
+		mainWindow.Focus()
+		app.Event.Emit("open-create-modal", true)
 	})
 
 	trayMenu := application.NewMenu()

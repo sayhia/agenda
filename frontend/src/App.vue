@@ -74,6 +74,8 @@ const searchQuery = ref('');
 const activeFilter = ref('all'); // all, today, near, active, paused
 const selectedDate = ref<string | null>(null);
 const selectedTag = ref<string | null>(null);
+const selectedTags = ref<string[]>([]);
+const tagFilterMode = ref<'and' | 'or'>('and');
 const filterOverdueOnly = ref(false);
 const nowTick = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -90,7 +92,7 @@ watch(reminders, (items) => {
   if (activeId.value && !existingIds.has(activeId.value)) activeId.value = null;
 });
 
-watch([currentView, activeFilter, selectedDate, selectedTag, filterOverdueOnly], () => {
+watch([currentView, activeFilter, selectedDate, selectedTag, selectedTags, tagFilterMode, filterOverdueOnly], () => {
   selectedIds.value = [];
   activeId.value = null;
 });
@@ -268,14 +270,26 @@ function handleDateFilter(date: string | null) {
   if (date) {
     currentView.value = 'list';
     selectedTag.value = null;
+    selectedTags.value = [];
     filterOverdueOnly.value = false;
     activeFilter.value = 'all';
   }
 }
 
 function handleTagFilter(tag: string | null) {
-  selectedTag.value = tag;
-  if (tag) {
+  if (!tag) {
+    selectedTags.value = [];
+    selectedTag.value = null;
+    return;
+  }
+  const idx = selectedTags.value.indexOf(tag);
+  if (idx >= 0) {
+    selectedTags.value.splice(idx, 1);
+  } else {
+    selectedTags.value.push(tag);
+  }
+  selectedTag.value = selectedTags.value.length ? selectedTags.value[0] : null;
+  if (selectedTags.value.length) {
     currentView.value = 'list';
     activeFilter.value = 'all';
     selectedDate.value = null;
@@ -283,9 +297,15 @@ function handleTagFilter(tag: string | null) {
   }
 }
 
+function handleToggleTagMode() {
+  tagFilterMode.value = tagFilterMode.value === 'and' ? 'or' : 'and';
+  showToast(`已切换标签筛选模式为：${tagFilterMode.value === 'and' ? '【且 AND】全部命中' : '【或 OR】任一命中'}`, 'info');
+}
+
 function handleClearAllFilters() {
   selectedDate.value = null;
   selectedTag.value = null;
+  selectedTags.value = [];
   filterOverdueOnly.value = false;
   activeFilter.value = 'all';
   searchQuery.value = '';
@@ -421,8 +441,21 @@ const filteredReminders = computed(() => {
     });
   }
 
-  // Tag filter (Round 6)
-  if (selectedTag.value) {
+  // Tag filter (R48: Multi-tag combinations with AND / OR)
+  if (selectedTags.value.length > 0) {
+    const targetTags = selectedTags.value.map((t) => t.toLowerCase());
+    if (tagFilterMode.value === 'and') {
+      list = list.filter((r) => {
+        const itemTags = parseReminderTags(r.tags).map((t) => t.toLowerCase());
+        return targetTags.every((target) => itemTags.includes(target));
+      });
+    } else {
+      list = list.filter((r) => {
+        const itemTags = parseReminderTags(r.tags).map((t) => t.toLowerCase());
+        return targetTags.some((target) => itemTags.includes(target));
+      });
+    }
+  } else if (selectedTag.value) {
     const targetTag = selectedTag.value.toLowerCase();
     list = list.filter((r) => parseReminderTags(r.tags).some((tag) => tag.toLowerCase() === targetTag));
   }
@@ -707,14 +740,15 @@ async function handleDeleteReminder(id: string) {
   }
 }
 
-async function handleDuplicateReminder(reminder: Reminder) {
+async function handleDuplicateReminder(reminder: Reminder, offsetDays = 1) {
   try {
     const targetDate = new Date(reminder.scheduled_at);
-    targetDate.setDate(targetDate.getDate() + 1);
+    targetDate.setDate(targetDate.getDate() + offsetDays);
     const duplicated = await DuplicateReminder(reminder.id, targetDate.toISOString());
     if (duplicated) {
       await loadReminders();
-      showToast(`已复刻日程: ${duplicated.title} (排期至明天)`, 'success');
+      const offsetDesc = offsetDays === 0 ? '原样克隆' : offsetDays === 1 ? '排期至明天' : offsetDays === 7 ? '排期至下周' : `排期 +${offsetDays}天`;
+      showToast(`已复刻日程: ${duplicated.title} (${offsetDesc})`, 'success');
     }
   } catch (err: any) {
     showToast(`复刻日程失败: ${err.message || err}`, 'error');
@@ -1570,6 +1604,8 @@ onUnmounted(() => {
         :activeFilter="activeFilter"
         :filterOverdueOnly="filterOverdueOnly"
         :selectedTag="selectedTag"
+        :selectedTags="selectedTags"
+        :tagFilterMode="tagFilterMode"
         :selectedDate="selectedDate"
         :reminders="reminders"
         :stats="stats"
@@ -1581,6 +1617,7 @@ onUnmounted(() => {
         @select-filter="handleSidebarSelectFilter"
         @toggle-overdue="handleSidebarToggleOverdue"
         @filter-tag="handleTagFilter"
+        @toggle-tag-mode="handleToggleTagMode"
         @clear-date-filter="selectedDate = null"
         @open-create="openCreateModal"
         @open-ai="showAIDrawer = true"
@@ -1652,6 +1689,7 @@ onUnmounted(() => {
           @update-subtasks="handleUpdateSubtasks"
           @filter-tag="handleTagFilter"
           @duplicate="handleDuplicateReminder"
+          @duplicate-offset="(r, days) => handleDuplicateReminder(r, days)"
           @start-focus="handleStartFocus"
           @update-title="handleInlineUpdateTitle"
           @update-priority="handleUpdatePriority"

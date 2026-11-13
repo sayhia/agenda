@@ -9,6 +9,8 @@ const props = withDefaults(defineProps<{
   activeFilter: string;
   filterOverdueOnly: boolean;
   selectedTag: string | null;
+  selectedTags?: string[];
+  tagFilterMode?: 'and' | 'or';
   selectedDate: string | null;
   reminders: Reminder[];
   stats: StatsData;
@@ -18,6 +20,8 @@ const props = withDefaults(defineProps<{
   isFullscreen?: boolean;
   isSoundEnabled?: boolean;
 }>(), {
+  selectedTags: () => [],
+  tagFilterMode: 'and',
   trashCount: 0,
   isCollapsed: false,
   isFullscreen: false,
@@ -29,6 +33,7 @@ const emit = defineEmits<{
   (e: 'select-filter', filter: string): void;
   (e: 'toggle-overdue'): void;
   (e: 'filter-tag', tag: string | null): void;
+  (e: 'toggle-tag-mode'): void;
   (e: 'clear-date-filter'): void;
   (e: 'open-create'): void;
   (e: 'open-ai'): void;
@@ -125,10 +130,29 @@ function selectAll() {
       <section v-if="tagList.length" class="nav-section tags-section">
         <div v-if="!isCollapsed" class="section-heading-row">
           <h2>03 · TAGS</h2>
-          <button v-if="selectedTag" type="button" @click="$emit('filter-tag', null)">清除</button>
+          <div class="tag-actions">
+            <button
+              v-if="selectedTags && selectedTags.length > 1"
+              type="button"
+              class="tag-mode-btn"
+              :title="tagFilterMode === 'and' ? '当前模式：且 AND（需同时满足全部选中标签）' : '当前模式：或 OR（满足任一标签即可）'"
+              @click="$emit('toggle-tag-mode')"
+            >
+              {{ tagFilterMode === 'and' ? 'AND 且' : 'OR 或' }}
+            </button>
+            <button v-if="selectedTag || (selectedTags && selectedTags.length)" type="button" @click="$emit('filter-tag', null)">清除</button>
+          </div>
         </div>
         <div class="tag-list">
-          <button v-for="tag in tagList" :key="tag.name" class="tag-nav-item" :class="{ active: selectedTag === tag.name }" type="button" :title="`#${tag.name} · ${tag.count} 项`" @click="$emit('filter-tag', selectedTag === tag.name ? null : tag.name)">
+          <button
+            v-for="tag in tagList"
+            :key="tag.name"
+            class="tag-nav-item"
+            :class="{ active: (selectedTags && selectedTags.includes(tag.name)) || selectedTag === tag.name }"
+            type="button"
+            :title="`#${tag.name} · ${tag.count} 项`"
+            @click="$emit('filter-tag', tag.name)"
+          >
             <span class="tag-hash">#</span><span v-if="!isCollapsed" class="tag-name">{{ tag.name }}</span><span v-if="!isCollapsed" class="tag-count">{{ tag.count }}</span>
           </button>
         </div>
@@ -203,6 +227,9 @@ function selectAll() {
 .is-collapsed .nav-count { position: absolute; margin: -23px 0 0 28px; min-width: 15px; padding: 2px 4px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-xs); font-size: 8px; text-align: center; }
 .section-heading-row { display: flex; align-items: center; justify-content: space-between; }
 .section-heading-row button { border: 0; background: transparent; color: var(--accent-text); font-size: 10px; cursor: pointer; }
+.tag-actions { display: flex; align-items: center; gap: 6px; }
+.tag-mode-btn { border: 1px solid var(--accent-border, rgba(255, 255, 255, 0.12)) !important; border-radius: 4px; padding: 1px 5px !important; background: var(--accent-soft, rgba(255, 255, 255, 0.06)) !important; color: var(--accent-text) !important; font-size: 9px !important; font-weight: 700; transition: all 0.12s ease; }
+.tag-mode-btn:hover { background: var(--accent) !important; color: #fff !important; }
 .tag-list { display: grid; gap: 2px; }
 .tag-nav-item { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border: 0; border-radius: 7px; color: var(--text-tertiary); background: transparent; cursor: pointer; text-align: left; }
 .tag-nav-item:hover, .tag-nav-item.active { color: var(--text-primary); background: var(--fill-hover); }
