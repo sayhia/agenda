@@ -77,12 +77,34 @@ func normalizeCSVPriority(raw string) string {
 func ImportCSV(content string) ([]CreateReminderRequest, error) {
 	// Strip UTF-8 BOM if present
 	content = strings.TrimPrefix(content, "\xEF\xBB\xBF")
+
+	// Auto-detect delimiter from the first non-empty line
+	lines := strings.Split(content, "\n")
+	var comma rune = ','
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed != "" {
+			semiCount := strings.Count(trimmed, ";")
+			commaCount := strings.Count(trimmed, ",")
+			tabCount := strings.Count(trimmed, "\t")
+			if semiCount > commaCount && semiCount > tabCount {
+				comma = ';'
+			} else if tabCount > commaCount && tabCount > semiCount {
+				comma = '\t'
+			}
+			break
+		}
+	}
+
 	r := csv.NewReader(strings.NewReader(content))
+	r.Comma = comma
+	r.LazyQuotes = true
 	r.FieldsPerRecord = -1 // Allow variable fields per record
 
 	var requests []CreateReminderRequest
 	isFirstRow := true
 	seenIDHeader := false
+	headerMap := make(map[string]int)
 
 	for {
 		record, err := r.Read()
@@ -98,6 +120,33 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 		if isFirstRow {
 			isFirstRow = false
 			if looksLikeCSVHeader(record) {
+				for i, col := range record {
+					name := strings.ToLower(strings.TrimSpace(col))
+					switch name {
+					case "标题", "title", "summary":
+						headerMap["title"] = i
+					case "时间", "计划时间", "scheduled_at", "time", "date":
+						headerMap["scheduled_at"] = i
+					case "优先级", "priority":
+						headerMap["priority"] = i
+					case "重复", "repeat_rule", "repeat":
+						headerMap["repeat_rule"] = i
+					case "标签", "tags":
+						headerMap["tags"] = i
+					case "持续时间", "持续", "时长", "duration", "duration_minutes":
+						headerMap["duration"] = i
+					case "提前", "提前提醒", "lead", "lead_minutes":
+						headerMap["lead"] = i
+					case "时区", "timezone":
+						headerMap["timezone"] = i
+					case "备注", "notes", "description":
+						headerMap["notes"] = i
+					case "子任务", "subtasks":
+						headerMap["subtasks"] = i
+					case "置顶", "pinned", "is_pinned":
+						headerMap["is_pinned"] = i
+					}
+				}
 				seenIDHeader = strings.EqualFold(strings.TrimSpace(record[0]), "id")
 				continue
 			}
@@ -115,47 +164,68 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 		subtasks := ""
 		isPinned := false
 
-		// Detect ID-first column cleanly via header, prefix, or column timestamp position
-		hasIDCol := len(record) >= 3 && seenIDHeader
-		if !hasIDCol && len(record) >= 3 {
-			if strings.HasPrefix(record[0], "rem_") {
-				hasIDCol = true
-			} else {
-				_, errCol1 := parseFlexibleTime(record[1])
-				_, errCol2 := parseFlexibleTime(record[2])
-				if errCol1 != nil && errCol2 == nil {
+		if len(headerMap) > 0 {
+			getCol := func(key string) string {
+				if idx, ok := headerMap[key]; ok && idx < len(record) {
+					return strings.TrimSpace(record[idx])
+				}
+				return ""
+			}
+			if v := getCol("title"); v != "" { title = v }
+			if v := getCol("scheduled_at"); v != "" { scheduledAt = v }
+			if v := getCol("priority"); v != "" { priority = v }
+			if v := getCol("repeat_rule"); v != "" { repeatRule = v }
+			if v := getCol("tags"); v != "" { tags = v }
+			if v := getCol("duration"); v != "" { durationMinutes, _ = strconv.Atoi(v) }
+			if v := getCol("lead"); v != "" { leadMinutes, _ = strconv.Atoi(v) }
+			if v := getCol("timezone"); v != "" { timezone = v }
+			if v := getCol("notes"); v != "" { notes = v }
+			if v := getCol("subtasks"); v != "" { subtasks = v }
+			if v := getCol("is_pinned"); v != "" { isPinned = v == "是" || v == "true" || v == "1" }
+		} else {
+			// Positional fallback
+			// Detect ID-first column cleanly via header, prefix, or column timestamp position
+			hasIDCol := len(record) >= 3 && seenIDHeader
+			if !hasIDCol && len(record) >= 3 {
+				if strings.HasPrefix(record[0], "rem_") {
 					hasIDCol = true
+				} else {
+					_, errCol1 := parseFlexibleTime(record[1])
+					_, errCol2 := parseFlexibleTime(record[2])
+					if errCol1 != nil && errCol2 == nil {
+						hasIDCol = true
+					}
 				}
 			}
-		}
 
-		if len(record) >= 2 {
-			if hasIDCol {
-				// Format with ID as first column
-				title = strings.TrimSpace(record[1])
-				scheduledAt = strings.TrimSpace(record[2])
-				if len(record) >= 4 { repeatRule = strings.TrimSpace(record[3]) }
-				if len(record) >= 5 { priority = strings.TrimSpace(record[4]) }
-				if len(record) >= 6 { tags = strings.TrimSpace(record[5]) }
-				if len(record) >= 7 { durationMinutes, _ = strconv.Atoi(record[6]) }
-				if len(record) >= 8 { leadMinutes, _ = strconv.Atoi(record[7]) }
-				if len(record) >= 9 { timezone = strings.TrimSpace(record[8]) }
-				if len(record) >= 10 { notes = strings.TrimSpace(record[9]) }
-				if len(record) >= 11 { subtasks = strings.TrimSpace(record[10]) }
-				if len(record) >= 13 { isPinned = record[12] == "是" || record[12] == "true" || record[12] == "1" }
-			} else {
-				// Format with Title as first column
-				title = strings.TrimSpace(record[0])
-				scheduledAt = strings.TrimSpace(record[1])
-				if len(record) >= 3 { repeatRule = strings.TrimSpace(record[2]) }
-				if len(record) >= 4 { priority = strings.TrimSpace(record[3]) }
-				if len(record) >= 5 { tags = strings.TrimSpace(record[4]) }
-				if len(record) >= 6 { durationMinutes, _ = strconv.Atoi(record[5]) }
-				if len(record) >= 7 { leadMinutes, _ = strconv.Atoi(record[6]) }
-				if len(record) >= 8 { timezone = strings.TrimSpace(record[7]) }
-				if len(record) >= 9 { notes = strings.TrimSpace(record[8]) }
-				if len(record) >= 10 { subtasks = strings.TrimSpace(record[9]) }
-				if len(record) >= 12 { isPinned = record[11] == "是" || record[11] == "true" || record[11] == "1" }
+			if len(record) >= 2 {
+				if hasIDCol {
+					// Format with ID as first column
+					title = strings.TrimSpace(record[1])
+					scheduledAt = strings.TrimSpace(record[2])
+					if len(record) >= 4 { repeatRule = strings.TrimSpace(record[3]) }
+					if len(record) >= 5 { priority = strings.TrimSpace(record[4]) }
+					if len(record) >= 6 { tags = strings.TrimSpace(record[5]) }
+					if len(record) >= 7 { durationMinutes, _ = strconv.Atoi(record[6]) }
+					if len(record) >= 8 { leadMinutes, _ = strconv.Atoi(record[7]) }
+					if len(record) >= 9 { timezone = strings.TrimSpace(record[8]) }
+					if len(record) >= 10 { notes = strings.TrimSpace(record[9]) }
+					if len(record) >= 11 { subtasks = strings.TrimSpace(record[10]) }
+					if len(record) >= 13 { isPinned = record[12] == "是" || record[12] == "true" || record[12] == "1" }
+				} else {
+					// Format with Title as first column
+					title = strings.TrimSpace(record[0])
+					scheduledAt = strings.TrimSpace(record[1])
+					if len(record) >= 3 { repeatRule = strings.TrimSpace(record[2]) }
+					if len(record) >= 4 { priority = strings.TrimSpace(record[3]) }
+					if len(record) >= 5 { tags = strings.TrimSpace(record[4]) }
+					if len(record) >= 6 { durationMinutes, _ = strconv.Atoi(record[5]) }
+					if len(record) >= 7 { leadMinutes, _ = strconv.Atoi(record[6]) }
+					if len(record) >= 8 { timezone = strings.TrimSpace(record[7]) }
+					if len(record) >= 9 { notes = strings.TrimSpace(record[8]) }
+					if len(record) >= 10 { subtasks = strings.TrimSpace(record[9]) }
+					if len(record) >= 12 { isPinned = record[11] == "是" || record[11] == "true" || record[11] == "1" }
+				}
 			}
 		}
 

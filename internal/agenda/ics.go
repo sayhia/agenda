@@ -228,11 +228,11 @@ func ImportICS(content string) ([]CreateReminderRequest, error) {
 				isCancelled = true
 			}
 		case "DTSTART":
-			if t, err := parseICSTime(val); err == nil {
+			if t, err := parseICSTime(val, keyPart); err == nil {
 				current.ScheduledAt = t.Format(time.RFC3339)
 			}
 		case "DTEND":
-			if t, err := parseICSTime(val); err == nil && current.ScheduledAt != "" {
+			if t, err := parseICSTime(val, keyPart); err == nil && current.ScheduledAt != "" {
 				if st, err := time.Parse(time.RFC3339, current.ScheduledAt); err == nil {
 					dur := int(t.Sub(st).Minutes())
 					if dur > 0 {
@@ -246,18 +246,43 @@ func ImportICS(content string) ([]CreateReminderRequest, error) {
 	return events, nil
 }
 
-func parseICSTime(val string) (time.Time, error) {
+func parseICSTime(val string, keyPart ...string) (time.Time, error) {
 	val = strings.TrimSpace(val)
+	loc := time.Local
+
+	// Support TZID parameter passed directly in val, e.g. "TZID=Asia/Shanghai:20261113T150000"
+	if strings.Contains(strings.ToUpper(val), "TZID=") && strings.Contains(val, ":") {
+		parts := strings.SplitN(val, ":", 2)
+		keyPart = append([]string{parts[0]}, keyPart...)
+		val = strings.TrimSpace(parts[1])
+	}
+
+	if len(keyPart) > 0 && strings.Contains(strings.ToUpper(keyPart[0]), "TZID=") {
+		upperKey := strings.ToUpper(keyPart[0])
+		tzStart := strings.Index(upperKey, "TZID=") + 5
+		tzEnd := strings.Index(keyPart[0][tzStart:], ";")
+		var tzid string
+		if tzEnd == -1 {
+			tzid = keyPart[0][tzStart:]
+		} else {
+			tzid = keyPart[0][tzStart : tzStart+tzEnd]
+		}
+		tzid = strings.Trim(strings.TrimSpace(tzid), "\"")
+		if l, err := time.LoadLocation(tzid); err == nil {
+			loc = l
+		}
+	}
+
 	if strings.HasSuffix(val, "Z") {
 		return time.Parse("20060102T150405Z", val)
 	}
 	if len(val) == 15 && val[8] == 'T' {
-		return time.ParseInLocation("20060102T150405", val, time.Local)
+		return time.ParseInLocation("20060102T150405", val, loc)
 	}
 	if len(val) == 8 {
-		return time.ParseInLocation("20060102", val, time.Local)
+		return time.ParseInLocation("20060102", val, loc)
 	}
-	return time.Parse(time.RFC3339, val)
+	return parseFlexibleTime(val)
 }
 
 func escapeICS(s string) string {

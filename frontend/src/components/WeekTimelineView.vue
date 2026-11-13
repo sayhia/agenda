@@ -230,6 +230,22 @@ function handleSlotDrop(event: DragEvent, dateStr: string, hour: number) {
   emit('reschedule', draggedReminder.value, `${dateStr}T${pad(snapped.hour)}:${pad(snapped.minute)}`);
   handleEventDragEnd();
 }
+
+function delayReminder(reminder: Reminder, hours: number) {
+  const current = new Date(reminder.scheduled_at);
+  current.setHours(current.getHours() + hours);
+  const pad = (v: number) => String(v).padStart(2, '0');
+  const nextIso = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}T${pad(current.getHours())}:${pad(current.getMinutes())}`;
+  emit('reschedule', reminder, nextIso);
+}
+
+function delayToTomorrow(reminder: Reminder) {
+  const current = new Date(reminder.scheduled_at);
+  current.setDate(current.getDate() + 1);
+  const pad = (v: number) => String(v).padStart(2, '0');
+  const nextIso = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}T${pad(current.getHours())}:${pad(current.getMinutes())}`;
+  emit('reschedule', reminder, nextIso);
+}
 </script>
 
 <template>
@@ -336,6 +352,10 @@ function handleSlotDrop(event: DragEvent, dateStr: string, hour: number) {
           >
             <div class="event-time">{{ formatTime(r.scheduled_at) }} ({{ r.duration_minutes || 30 }}m)</div>
             <div class="event-title">{{ r.title }}</div>
+            <div class="event-quick-reschedule" @click.stop>
+              <button type="button" title="推迟 1 小时" @click.stop="delayReminder(r, 1)">+1h</button>
+              <button type="button" title="延后至明天同一时间" @click.stop="delayToTomorrow(r)">+1d</button>
+            </div>
             <div v-if="r.tags" class="event-tags-row">
               <span
                 v-for="t in parseReminderTags(r.tags).slice(0, 2)"
@@ -524,6 +544,36 @@ function handleSlotDrop(event: DragEvent, dateStr: string, hour: number) {
 .timeline-event-card:focus-visible {
   transform: scale(1.02);
   z-index: 20;
+}
+
+.event-quick-reschedule {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+  z-index: 25;
+}
+.timeline-event-card:hover .event-quick-reschedule {
+  opacity: 1;
+}
+.event-quick-reschedule button {
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(15, 20, 28, 0.88);
+  color: #fff;
+  font: 700 8.5px var(--font-mono);
+  cursor: pointer;
+  line-height: 1.2;
+  transition: all var(--motion-fast);
+}
+.event-quick-reschedule button:hover {
+  background: var(--accent);
+  color: var(--accent-ink, #000);
+  border-color: var(--accent);
 }
 
 .event-tags-row {

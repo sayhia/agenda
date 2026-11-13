@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { formatTime, formatDateLabel } from '../utils/format';
 import { parseReminderTags } from '../domain/reminder';
+import { fuzzyMatchPinyin } from '../utils/pinyin';
 
 interface CommandItem {
   id: string;
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   (e: 'toggle-compact'): void;
   (e: 'export-ics'): void;
   (e: 'export-csv'): void;
+  (e: 'select-theme', theme: string): void;
   (e: 'edit-reminder', reminder: Reminder): void;
 }>();
 
@@ -208,6 +210,46 @@ const staticCommands = computed<CommandItem[]>(() => [
       emit('select-filter', 'today');
     },
   },
+  {
+    id: 'theme-obsidian',
+    category: '个性化主题',
+    title: '切换主题：Obsidian 黑曜沉浸 (默认暗色)',
+    subtitle: '经典深沉暗黑背景，高对比度低疲劳',
+    icon: '●',
+    action: () => emit('select-theme', 'obsidian'),
+  },
+  {
+    id: 'theme-daylight',
+    category: '个性化主题',
+    title: '切换主题：Daylight 雅白明亮 (浅色)',
+    subtitle: '清爽明朗纸感白，日间办公高可读性',
+    icon: '○',
+    action: () => emit('select-theme', 'daylight'),
+  },
+  {
+    id: 'theme-amber',
+    category: '个性化主题',
+    title: '切换主题：Ember 琥珀暖橙',
+    subtitle: '温暖专注光晕，暖色护眼防疲劳',
+    icon: '◈',
+    action: () => emit('select-theme', 'amber'),
+  },
+  {
+    id: 'theme-cyber',
+    category: '个性化主题',
+    title: '切换主题：Midwater 赛博青蓝',
+    subtitle: '深海荧光青，极客科技质感',
+    icon: '◇',
+    action: () => emit('select-theme', 'cyber'),
+  },
+  {
+    id: 'theme-aurora',
+    category: '个性化主题',
+    title: '切换主题：Orchid 极光紫罗兰',
+    subtitle: '优雅紫罗兰微光，柔和视觉体验',
+    icon: '✦',
+    action: () => emit('select-theme', 'aurora'),
+  },
 ]);
 
 // Filtered items based on query
@@ -227,9 +269,9 @@ const filteredCommands = computed<CommandItem[]>(() => {
     for (const cmd of staticCommands.value) {
       if (
         !cleanQ ||
-        cmd.title.toLowerCase().includes(cleanQ) ||
-        (cmd.subtitle && cmd.subtitle.toLowerCase().includes(cleanQ)) ||
-        cmd.category.toLowerCase().includes(cleanQ)
+        fuzzyMatchPinyin(cmd.title, cleanQ) ||
+        (cmd.subtitle && fuzzyMatchPinyin(cmd.subtitle, cleanQ)) ||
+        fuzzyMatchPinyin(cmd.category, cleanQ)
       ) {
         matches.push(cmd);
       }
@@ -241,14 +283,14 @@ const filteredCommands = computed<CommandItem[]>(() => {
     let reminderPool = props.reminders.filter((r) => r.status !== 'ended');
     if (isTagOnly) {
       reminderPool = reminderPool.filter((reminder) =>
-        parseReminderTags(reminder.tags).some((tag) => tag.toLowerCase().includes(cleanQ))
+        parseReminderTags(reminder.tags).some((tag) => fuzzyMatchPinyin(tag, cleanQ))
       );
     } else if (cleanQ) {
       reminderPool = reminderPool.filter(
         (r) =>
-          r.title.toLowerCase().includes(cleanQ) ||
-          r.notes?.toLowerCase().includes(cleanQ) ||
-          r.tags?.toLowerCase().includes(cleanQ)
+          fuzzyMatchPinyin(r.title, cleanQ) ||
+          (r.notes && fuzzyMatchPinyin(r.notes, cleanQ)) ||
+          (r.tags && fuzzyMatchPinyin(r.tags, cleanQ))
       );
     }
     const reminderMatches = reminderPool.slice(0, 8);

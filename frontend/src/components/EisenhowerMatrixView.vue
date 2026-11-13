@@ -82,6 +82,19 @@ function subtaskProgress(reminder: Reminder) {
   const done = subtasks.filter((subtask) => subtask.done).length;
   return { done, total: subtasks.length, percentage: Math.round(done / subtasks.length * 100) };
 }
+
+const totalItems = computed(() => quadrants.value.reduce((acc, q) => acc + q.items.length, 0));
+
+const priorityOrder: ReminderPriority[] = ['p0', 'p1', 'p2', 'p3'];
+function shiftPriority(reminder: Reminder, direction: -1 | 1) {
+  const current = (reminder.priority || 'p2').toLowerCase() as ReminderPriority;
+  const idx = priorityOrder.indexOf(current);
+  if (idx === -1) return;
+  const targetIdx = idx + direction;
+  if (targetIdx >= 0 && targetIdx < priorityOrder.length) {
+    emit('update-priority', reminder, priorityOrder[targetIdx]);
+  }
+}
 </script>
 
 <template>
@@ -89,11 +102,25 @@ function subtaskProgress(reminder: Reminder) {
     <header class="matrix-header st-reticle">
       <div>
         <p class="matrix-eyebrow">PRIORITY MATRIX</p>
-        <h2 class="matrix-title">优先级矩阵</h2>
-        <p class="matrix-sub">拖动日程即可调整优先级。已完成事项不会显示在矩阵中。</p>
+        <h2 class="matrix-title">四象限优先级矩阵</h2>
+        <p class="matrix-sub">拖动卡片或点击快捷按钮调整优先级。已完结事项不计入负荷。</p>
       </div>
-      <div class="matrix-summary" aria-label="各优先级数量">
-        <span v-for="quadrant in quadrants" :key="quadrant.priority" :class="quadrant.priority"><i></i>{{ quadrant.priority.toUpperCase() }} {{ quadrant.items.length }}</span>
+      <div class="matrix-summary-wrap">
+        <div class="matrix-summary" aria-label="各优先级数量">
+          <span v-for="quadrant in quadrants" :key="quadrant.priority" :class="quadrant.priority">
+            <i></i>{{ quadrant.priority.toUpperCase() }} {{ quadrant.items.length }}
+            <small v-if="totalItems > 0">({{ Math.round((quadrant.items.length / totalItems) * 100) }}%)</small>
+          </span>
+        </div>
+        <!-- Workload Segment Distribution Bar -->
+        <div v-if="totalItems > 0" class="matrix-dist-bar" aria-hidden="true">
+          <i
+            v-for="quadrant in quadrants"
+            :key="quadrant.priority"
+            :class="quadrant.priority"
+            :style="{ width: `${(quadrant.items.length / totalItems) * 100}%` }"
+          ></i>
+        </div>
       </div>
     </header>
 
@@ -178,6 +205,22 @@ function subtaskProgress(reminder: Reminder) {
                   {{ pri.toUpperCase() }}
                 </button>
               </div>
+              <div class="matrix-shift-group" role="group" aria-label="升降级">
+                <button
+                  type="button"
+                  class="matrix-shift-btn"
+                  title="提升优先级"
+                  :disabled="(reminder.priority || 'p2').toLowerCase() === 'p0'"
+                  @click.stop="shiftPriority(reminder, -1)"
+                >↑</button>
+                <button
+                  type="button"
+                  class="matrix-shift-btn"
+                  title="降低优先级"
+                  :disabled="(reminder.priority || 'p2').toLowerCase() === 'p3'"
+                  @click.stop="shiftPriority(reminder, 1)"
+                >↓</button>
+              </div>
               <button type="button" @click="$emit('edit', reminder)">编辑</button>
               <button class="delete-button" type="button" @click="$emit('delete', reminder.id)">删除</button>
             </footer>
@@ -194,7 +237,15 @@ function subtaskProgress(reminder: Reminder) {
 .matrix-eyebrow { margin:0 0 4px; color:var(--text-quaternary); font:700 8px var(--font-mono); letter-spacing:.14em; }
 .matrix-title { margin:0; color:var(--text-primary); font-size:15px; letter-spacing:-.02em; }
 .matrix-sub { margin:4px 0 0; color:var(--text-tertiary); font-size:10px; }
+.matrix-summary-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .matrix-summary { display:flex; gap:5px; }.matrix-summary span { display:flex; align-items:center; gap:5px; padding:4px 7px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--text-tertiary); font:650 9px var(--font-mono); }.matrix-summary i { width:5px; height:5px; border-radius:50%; background:var(--text-quaternary); }.matrix-summary .p0 i{background:var(--danger)}.matrix-summary .p1 i{background:var(--warning)}.matrix-summary .p2 i{background:var(--accent)}
+.matrix-summary small { opacity: 0.7; font-weight: 500; font-size: 8px; margin-left: 1px; }
+.matrix-dist-bar { width: 100%; height: 4px; display: flex; overflow: hidden; border-radius: 99px; background: var(--fill-hover); }
+.matrix-dist-bar i { height: 100%; transition: width 0.3s ease; }
+.matrix-dist-bar i.p0 { background: var(--danger); }
+.matrix-dist-bar i.p1 { background: var(--warning); }
+.matrix-dist-bar i.p2 { background: var(--accent); }
+.matrix-dist-bar i.p3 { background: var(--border-strong); }
 .quadrants-grid { flex:1; min-height:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(250px,1fr)); gap:10px; }
 .quadrant-card { position:relative; min-width:0; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border-subtle); border-radius:14px; background:var(--surface); transition:border-color var(--motion-fast),background var(--motion-fast); }
 .quadrant-card.p0 { border-top:2px solid var(--danger); background:radial-gradient(240px circle at var(--mx, -999px) var(--my, -999px), rgba(255,101,104,0.11), transparent 70%), radial-gradient(60% 45% at 100% 0%, rgba(255,101,104,0.09), transparent 65%), var(--surface); }
@@ -220,6 +271,10 @@ function subtaskProgress(reminder: Reminder) {
 .matrix-item-actions .matrix-pri-pill.p1.active { background:color-mix(in srgb,var(--lime) 18%,transparent); color:var(--lime-strong); }
 .matrix-item-actions .matrix-pri-pill.p2.active { background:var(--accent-soft); color:var(--tide-text); }
 .matrix-item-actions .matrix-pri-pill.p3.active { background:var(--fill-hover); color:var(--text-primary); }
+.matrix-shift-group { display: inline-flex; align-items: center; gap: 2px; }
+.matrix-shift-btn { width: 20px; height: 20px; padding: 0 !important; display: grid; place-items: center; border: 1px solid var(--border-subtle); border-radius: 4px; background: transparent; color: var(--text-tertiary); font: 700 9px var(--font-mono); cursor: pointer; transition: all var(--motion-fast); }
+.matrix-shift-btn:hover:not(:disabled) { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-text); }
+.matrix-shift-btn:disabled { opacity: 0.25; cursor: default; }
 .matrix-item-actions button:not(.matrix-pri-pill) { height:22px; padding:0 8px; border:1px solid var(--border-subtle); border-radius:999px; background:transparent; color:var(--text-tertiary); font-size:8.5px; cursor:pointer; transition:all var(--motion-fast); }.matrix-item-actions button:not(.matrix-pri-pill):hover{background:var(--fill-hover);border-color:var(--border-strong);color:var(--text-primary)}.matrix-item-actions .delete-button:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 35%,transparent);background:color-mix(in srgb,var(--danger) 10%,transparent)}
 @media(max-width:1020px){.matrix-summary{display:none}.quadrants-grid{grid-template-columns:1fr;grid-template-rows:none}.quadrant-card{min-height:260px}.matrix-item-actions{opacity:1}}
 </style>

@@ -13,6 +13,34 @@ const emit = defineEmits<{
 const FOCUS_DURATION = 25 * 60;
 const BREAK_DURATION = 5 * 60;
 const STORAGE_KEY = 'agenda_focus_session';
+const DAILY_FOCUS_KEY_PREFIX = 'agenda_focus_daily_';
+
+function getTodayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const todayFocusMinutes = ref(0);
+
+function loadTodayFocusStats() {
+  try {
+    const raw = localStorage.getItem(`${DAILY_FOCUS_KEY_PREFIX}${getTodayKey()}`);
+    todayFocusMinutes.value = raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    todayFocusMinutes.value = 0;
+  }
+}
+
+function recordFocusSession(minutes: number) {
+  loadTodayFocusStats();
+  todayFocusMinutes.value += minutes;
+  try {
+    localStorage.setItem(`${DAILY_FOCUS_KEY_PREFIX}${getTodayKey()}`, String(todayFocusMinutes.value));
+  } catch {
+    // fallback
+  }
+}
+
 const isBreak = ref(false);
 const totalSeconds = computed(() => isBreak.value ? BREAK_DURATION : FOCUS_DURATION);
 const secondsLeft = ref(FOCUS_DURATION);
@@ -94,6 +122,9 @@ function handleTimerComplete() {
   endAt = null;
   clearTicker();
   playFocusCompleteChime();
+  if (!isBreak.value) {
+    recordFocusSession(Math.round(totalSeconds.value / 60));
+  }
   emit('toast', isBreak.value ? '休息结束，可以开始下一轮专注' : '专注时段结束，休息五分钟吧', isBreak.value ? 'info' : 'success');
   isBreak.value = !isBreak.value;
   secondsLeft.value = totalSeconds.value;
@@ -101,6 +132,7 @@ function handleTimerComplete() {
 }
 
 function restoreSession() {
+  loadTodayFocusStats();
   try {
     const session = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     const requestedReminderId = props.reminder?.id || '';
@@ -149,7 +181,10 @@ onUnmounted(() => {
           <span class="mode-dot"></span>
           <span>{{ isBreak ? 'REST SESSION · 5M BREAK' : 'DEEP FOCUS · 25M POMODORO' }}</span>
         </div>
-        <button class="icon-btn close-btn" title="退出专注模式" @click="$emit('close')">✕</button>
+        <div class="focus-head-right">
+          <span v-if="todayFocusMinutes > 0" class="daily-focus-chip">今日 {{ todayFocusMinutes }}m</span>
+          <button class="icon-btn close-btn" title="退出专注模式" @click="$emit('close')">✕</button>
+        </div>
       </div>
 
       <!-- Current Task Banner -->
@@ -267,6 +302,22 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.focus-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.daily-focus-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lime) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lime) 35%, transparent);
+  color: var(--lime-strong);
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.05em;
 }
 
 .focus-badge {

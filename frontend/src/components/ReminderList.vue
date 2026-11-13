@@ -1813,8 +1813,9 @@ function handleInlineAddSubtask(r: Reminder) {
   gap: 12px;
   padding: 10px 14px;
   border-radius: 10px;
-  transition: all 0.16s ease;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
   position: relative;
+  contain: layout style;
 }
 
 .task-row:hover {

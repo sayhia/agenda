@@ -489,3 +489,143 @@ func TestSchedulerTriggerPreservesPinAndCount(t *testing.T) {
 		t.Errorf("expected single triggered reminder to end with IsPinned=true, got pinned=%v status=%s", gotOnce.IsPinned, gotOnce.Status)
 	}
 }
+
+func TestDatabaseBackupAndPrune(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := tempDir + "/test_agenda.db"
+
+	db, err := InitDBWithPath(dbPath)
+	if err != nil {
+		t.Fatalf("InitDBWithPath failed: %v", err)
+	}
+	defer db.Close()
+
+	// Create test reminder
+	_, err = db.CreateReminder(CreateReminderRequest{
+		Title:       "备份验证日程",
+		ScheduledAt: time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("CreateReminder failed: %v", err)
+	}
+
+	backupDir := tempDir + "/backups"
+	backupFile, err := db.BackupDatabase(backupDir)
+	if err != nil {
+		t.Fatalf("BackupDatabase failed: %v", err)
+	}
+
+	if backupFile == "" {
+		t.Fatal("expected non-empty backup path")
+	}
+
+	// Verify backup can be opened
+	verifyDB, err := sql.Open("sqlite", backupFile)
+	if err != nil {
+		t.Fatalf("failed to open backup db: %v", err)
+	}
+	defer verifyDB.Close()
+
+	var count int
+	if err := verifyDB.QueryRow("SELECT count(*) FROM reminders WHERE title = '备份验证日程'").Scan(&count); err != nil {
+		t.Fatalf("failed to query backup db: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 reminder in backup, got %d", count)
+	}
+
+	// Test pruning
+	err = db.PruneOldBackups(backupDir, 1)
+	if err != nil {
+		t.Fatalf("PruneOldBackups failed: %v", err)
+	}
+}
+
+func TestICSWithTimezone(t *testing.T) {
+	tStr := "TZID=Asia/Shanghai:20261113T150000"
+	parsed, err := parseICSTime(tStr)
+	if err != nil {
+		t.Fatalf("parseICSTime failed: %v", err)
+	}
+
+	if parsed.Hour() != 15 || parsed.Minute() != 0 {
+		t.Errorf("expected 15:00, got %s", parsed.Format("15:04"))
+	}
+}
+
+func TestCSVSemicolonAndLazyQuotes(t *testing.T) {
+	csvData := "标题;时间;优先级;备注\n\"架构评审\";2026-11-13 14:00:00;P0;\"带有 \"未转义\" 引号的备注\"\n"
+	reminders, err := ImportCSV(csvData)
+	if err != nil {
+		t.Fatalf("ImportCSV failed: %v", err)
+	}
+
+	if len(reminders) != 1 {
+		t.Fatalf("expected 1 reminder, got %d", len(reminders))
+	}
+	if reminders[0].Title != "架构评审" {
+		t.Errorf("expected 架构评审, got %s", reminders[0].Title)
+	}
+	if reminders[0].Priority != "p0" {
+		t.Errorf("expected p0, got %s", reminders[0].Priority)
+	}
+}
+
+func TestPruneRemindersForAI(t *testing.T) {
+	now := time.Now()
+	var testReminders []Reminder
+
+	// Create 40 reminders: 5 overdue, 10 today, 5 P0 upcoming, 20 far future
+	for i := 0; i < 5; i++ {
+		testReminders = append(testReminders, Reminder{
+			ID:          string(rune('a' + i)),
+			Title:       "逾期任务",
+			Status:      "active",
+			ScheduledAt: now.Add(-time.Duration(i+1) * time.Hour).Format(time.RFC3339),
+			Priority:    "p2",
+		})
+	}
+	for i := 0; i < 10; i++ {
+		testReminders = append(testReminders, Reminder{
+			ID:          string(rune('k' + i)),
+			Title:       "今日任务",
+			Status:      "active",
+			ScheduledAt: now.Add(time.Duration(i+1) * time.Hour).Format(time.RFC3339),
+			Priority:    "p2",
+		})
+	}
+	for i := 0; i < 25; i++ {
+		testReminders = append(testReminders, Reminder{
+			ID:          string(rune('u' + i)),
+			Title:       "远期任务",
+			Status:      "active",
+			ScheduledAt: now.Add(time.Duration(24*(i+5)) * time.Hour).Format(time.RFC3339),
+			Priority:    "p3",
+		})
+	}
+
+	pruned, count := pruneRemindersForAI(testReminders, now)
+	if len(pruned) > 30 {
+		t.Errorf("expected pruned list to be <= 30, got %d", len(pruned))
+	}
+	if count != 10 {
+		t.Errorf("expected 10 items pruned, got %d", count)
+	}
+
+	// Verify all overdue and today tasks are preserved
+	var overdueFound, todayFound int
+	for _, r := range pruned {
+		if r.Title == "逾期任务" {
+			overdueFound++
+		}
+		if r.Title == "今日任务" {
+			todayFound++
+		}
+	}
+	if overdueFound != 5 {
+		t.Errorf("expected 5 overdue tasks preserved, got %d", overdueFound)
+	}
+	if todayFound != 10 {
+		t.Errorf("expected 10 today tasks preserved, got %d", todayFound)
+	}
+}

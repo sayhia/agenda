@@ -119,17 +119,17 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
     input = input.replace(noteMatch[0], ' ');
   }
 
-  // 4.1 Extract Priority (优先级: P0/P1/P2/P3 / 特急 / 加急 / 低优)
+  // 4.1 Extract Priority (优先级: P0/P1/P2/P3 / 特急 / 最高优 / 加急 / 重要紧急 / 低优 / 延后)
   let priority = 'p2';
-  if (/(?:(?:优先级|级别)[:：]?\s*)?[pP]0\b|特急|非常紧急/i.test(input)) {
+  if (/(?:(?:优先级|级别)[:：]?\s*)?[pP]0\b|特急|非常紧急|最高优先级|重要紧急/i.test(input)) {
     priority = 'p0';
-    input = input.replace(/(?:(?:优先级|级别)[:：]?\s*)?[pP]0\b|特急|非常紧急/gi, ' ');
-  } else if (/(?:(?:优先级|级别)[:：]?\s*)?[pP]1\b|高优|加急/i.test(input)) {
+    input = input.replace(/(?:(?:优先级|级别)[:：]?\s*)?[pP]0\b|特急|非常紧急|最高优先级|重要紧急/gi, ' ');
+  } else if (/(?:(?:优先级|级别)[:：]?\s*)?[pP]1\b|高优|加急|重要不紧急|优先/i.test(input)) {
     priority = 'p1';
-    input = input.replace(/(?:(?:优先级|级别)[:：]?\s*)?[pP]1\b|高优|加急/gi, ' ');
-  } else if (/(?:(?:优先级|级别)[:：]?\s*)?[pP]3\b|低优/i.test(input)) {
+    input = input.replace(/(?:(?:优先级|级别)[:：]?\s*)?[pP]1\b|高优|加急|重要不紧急|优先/gi, ' ');
+  } else if (/(?:(?:优先级|级别)[:：]?\s*)?[pP]3\b|低优|不急|顺延|延后/i.test(input)) {
     priority = 'p3';
-    input = input.replace(/(?:(?:优先级|级别)[:：]?\s*)?[pP]3\b|低优/gi, ' ');
+    input = input.replace(/(?:(?:优先级|级别)[:：]?\s*)?[pP]3\b|低优|不急|顺延|延后/gi, ' ');
   }
 
   // 4.2 Extract Hash Tags (#标签)
@@ -256,15 +256,16 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
     input = input.replace(consecutiveMatch[0], ' ');
   }
 
-  // Relative Weekday: 下周三 / 周五 / 星期日 / 下个礼拜一 / 这周五
-  const weekMatch = input.match(/(?:(下个?|这个?|本个?|下|这|本)\s*)?(?:周|星期|礼拜)([一二三四五六日天1-7])/i);
+  // Relative Weekday: 下下周三 / 下周三 / 周五 / 星期日 / 下个礼拜一 / 这周五
+  const weekMatch = input.match(/(?:(下下个?|下下|下个?|这个?|本个?|下|这|本)\s*)?(?:周|星期|礼拜)([一二三四五六日天1-7])/i);
   if (weekMatch) {
     const prefix = weekMatch[1] || '';
-    const isNextWeek = prefix.startsWith('下');
     const dayCode = weekdayToNum(weekMatch[2]);
     const currentDay = now.getDay();
     let diff = dayCode - currentDay;
-    if (diff <= 0 || isNextWeek) {
+    if (prefix.startsWith('下下')) {
+      diff = (diff <= 0 ? diff + 7 : diff) + 7;
+    } else if (diff <= 0 || prefix.startsWith('下')) {
       diff += 7;
     }
     const d = new Date(now);

@@ -3,9 +3,11 @@ import {
   formatPanguText,
   parseNaturalReminder,
 } from '../src/utils/nlp.ts';
-import { checkTimeConflict } from '../src/utils/conflict.ts';
+import { checkTimeConflict, calculateScheduleDensity } from '../src/utils/conflict.ts';
 import { escapeHTML, sanitizeHTML } from '../src/utils/sanitize.ts';
 import { getTagColor } from '../src/utils/tagColors.ts';
+import { fuzzyMatchPinyin } from '../src/utils/pinyin.ts';
+import { playReminderChime, playFocusCompleteChime } from '../src/utils/audio.ts';
 import {
   parseReminderSubtasks,
   parseReminderTags,
@@ -142,6 +144,62 @@ check('toUpdateReminderRequest preserves pin, duration, priority, tags while pat
   assert.equal(req.priority, 'p1');
   assert.equal(req.tags, '工程,发布');
   assert.equal(req.lead_minutes, 15);
+});
+
+// 6. Pinyin initial & fuzzy matching
+check('fuzzyMatchPinyin matches initials and Chinese strings', () => {
+  assert.equal(fuzzyMatchPinyin('新建日程', 'xj'), true);
+  assert.equal(fuzzyMatchPinyin('日程管理', 'rc'), true);
+  assert.equal(fuzzyMatchPinyin('切换主题', 'zt'), true);
+  assert.equal(fuzzyMatchPinyin('专注番茄钟', 'zz'), true);
+  assert.equal(fuzzyMatchPinyin('普通文字', 'fzk'), false);
+  assert.equal(fuzzyMatchPinyin('帮助中心', 'help'), false);
+  assert.equal(fuzzyMatchPinyin('任何文字', ''), true);
+});
+
+// 7. Schedule density heatmap calculator
+check('calculateScheduleDensity computes workload percentages and density levels', () => {
+  const d = '2026-11-13';
+  const reminders = [
+    { id: '1', title: 'Task 1', scheduled_at: '2026-11-13T09:00:00Z', duration_minutes: 60, status: 'active' },
+    { id: '2', title: 'Task 2', scheduled_at: '2026-11-13T11:00:00Z', duration_minutes: 90, status: 'active' },
+    { id: '3', title: 'Task 3', scheduled_at: '2026-11-14T09:00:00Z', duration_minutes: 120, status: 'active' },
+    { id: '4', title: 'Ended Task', scheduled_at: '2026-11-13T14:00:00Z', duration_minutes: 60, status: 'ended' },
+  ];
+
+  const density = calculateScheduleDensity(d, reminders);
+  assert.equal(density.totalBusyMinutes, 150); // 60 + 90
+  assert.equal(density.densityPct, 25); // 150 / 600
+  assert.equal(density.level, 'medium');
+
+  const emptyDensity = calculateScheduleDensity('2026-11-15', reminders);
+  assert.equal(emptyDensity.totalBusyMinutes, 0);
+  assert.equal(emptyDensity.level, 'low');
+});
+
+// 8. Advanced Chinese NLP expressions
+check('nlp handles 特急, 重要不紧急, and 下下周', () => {
+  const refNow = new Date(2026, 10, 12, 9, 0, 0, 0);
+  const p0 = parseNaturalReminder('特急：修复线上事故', refNow);
+  assert.equal(p0.priority, 'p0');
+
+  const p1 = parseNaturalReminder('重要不紧急 规划年度架构路线图', refNow);
+  assert.equal(p1.priority, 'p1');
+
+  const nextNextWeek = parseNaturalReminder('下下周三下午3点一刻季度战略研讨', refNow);
+  assert.equal(nextNextWeek.hasTime, true);
+  const sched = new Date(nextNextWeek.scheduledAt);
+  assert.equal(sched.getHours(), 15);
+  assert.equal(sched.getMinutes(), 15);
+});
+
+// 9. Sound synthesizer module
+check('sound synthesizer functions are callable without throwing', () => {
+  assert.equal(typeof playReminderChime, 'function');
+  assert.equal(typeof playFocusCompleteChime, 'function');
+  // In node environment without window.AudioContext, it safely returns or handles error
+  assert.doesNotThrow(() => playReminderChime());
+  assert.doesNotThrow(() => playFocusCompleteChime());
 });
 
 console.log(`✅ All ${passed} desktop utility unit tests passed!`);

@@ -429,6 +429,18 @@ const filteredReminders = computed(() => {
   return list;
 });
 
+const allKnownTags = computed(() => {
+  const set = new Set<string>(['工作', '生活', '学习', '健康', '紧急', '项目', '会议']);
+  for (const r of reminders.value) {
+    if (r.tags) {
+      for (const t of parseReminderTags(r.tags)) {
+        if (t.trim()) set.add(t.trim());
+      }
+    }
+  }
+  return Array.from(set);
+});
+
 // Data Loading
 let reminderLoadSequence = 0;
 
@@ -1389,6 +1401,17 @@ function handleDomFullscreenChange() {
   void syncWindowFullscreenState();
 }
 
+function handleSelectTheme(theme: string) {
+  localStorage.setItem('agenda_theme', theme);
+  if (theme && theme !== 'midnight' && theme !== 'obsidian') {
+    document.documentElement.setAttribute('data-theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  showCommandPalette.value = false;
+  showToast(`已切换主题至 ${theme}`, 'success');
+}
+
 function syncSoundPreference(event?: Event) {
   const detail = (event as CustomEvent<boolean> | undefined)?.detail;
   isSoundEnabled.value = typeof detail === 'boolean'
@@ -1522,6 +1545,7 @@ onUnmounted(() => {
         <QuickAddBar
           ref="quickAddRef"
           :submitting="isQuickAdding"
+          :availableTags="allKnownTags"
           @submit="handleQuickAdd"
           @ai-batch-submit="handleAIBatchSubmit"
           @toast="showToast"
@@ -1726,6 +1750,7 @@ onUnmounted(() => {
       @toggle-compact="isCompactMode = !isCompactMode"
       @export-ics="handleExportICS"
       @export-csv="handleExportCSV"
+      @select-theme="handleSelectTheme"
       @edit-reminder="openEditModal"
     />
 

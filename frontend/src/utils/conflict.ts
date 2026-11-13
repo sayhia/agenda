@@ -66,3 +66,50 @@ export function checkTimeConflict(
     suggestedTimeLabel,
   };
 }
+
+export interface DayDensityInfo {
+  totalBusyMinutes: number;
+  densityPct: number;
+  level: 'low' | 'medium' | 'high' | 'full';
+  conflictsCount: number;
+}
+
+/**
+ * Calculates calendar workload density for a given date string (YYYY-MM-DD).
+ * Reference standard working day: 09:00 - 19:00 (10 hours = 600 minutes).
+ */
+export function calculateScheduleDensity(
+  dateStr: string,
+  reminders: Reminder[]
+): DayDensityInfo {
+  if (!dateStr) {
+    return { totalBusyMinutes: 0, densityPct: 0, level: 'low', conflictsCount: 0 };
+  }
+
+  let totalBusyMinutes = 0;
+  let activeCount = 0;
+
+  for (const r of reminders) {
+    if (r.status !== 'active' || !r.scheduled_at) continue;
+    if (!r.scheduled_at.startsWith(dateStr)) continue;
+
+    activeCount++;
+    const dur = r.duration_minutes > 0 ? r.duration_minutes : 30;
+    totalBusyMinutes += dur;
+  }
+
+  const standardWorkDayMinutes = 600; // 10 hours
+  const densityPct = Math.min(100, Math.round((totalBusyMinutes / standardWorkDayMinutes) * 100));
+
+  let level: 'low' | 'medium' | 'high' | 'full' = 'low';
+  if (densityPct >= 85) level = 'full';
+  else if (densityPct >= 50) level = 'high';
+  else if (densityPct >= 25) level = 'medium';
+
+  return {
+    totalBusyMinutes,
+    densityPct,
+    level,
+    conflictsCount: activeCount > 1 ? activeCount - 1 : 0,
+  };
+}

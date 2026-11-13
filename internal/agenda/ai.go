@@ -105,6 +105,83 @@ func (s *AgendaService) TestAIConnection(baseURL, apiKey, model string) (string,
 	return fmt.Sprintf("连接成功！模型响应: %s", strings.TrimSpace(resp)), nil
 }
 
+// pruneRemindersForAI limits context noise and guards token budget.
+// It prioritizes:
+// 1. Overdue active reminders
+// 2. Today's active reminders
+// 3. P0/P1 high-priority active reminders within 3 days
+// 4. Other active reminders, capped at a maximum of 30 items total.
+func pruneRemindersForAI(reminders []Reminder, now time.Time) ([]Reminder, int) {
+	if len(reminders) <= 30 {
+		return reminders, 0
+	}
+
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	threeDaysLater := todayStart.Add(72 * time.Hour)
+
+	var highPriority []Reminder
+	var todayList []Reminder
+	var overdueList []Reminder
+	var otherActive []Reminder
+
+	for _, r := range reminders {
+		if r.Status == "ended" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, r.ScheduledAt)
+		if err != nil {
+			t, err = time.Parse("2006-01-02 15:04:05", r.ScheduledAt)
+		}
+		if err != nil {
+			otherActive = append(otherActive, r)
+			continue
+		}
+
+		if t.Before(now) {
+			overdueList = append(overdueList, r)
+		} else if t.Before(todayStart.Add(24 * time.Hour)) {
+			todayList = append(todayList, r)
+		} else if (strings.ToLower(r.Priority) == "p0" || strings.ToLower(r.Priority) == "p1") && t.Before(threeDaysLater) {
+			highPriority = append(highPriority, r)
+		} else {
+			otherActive = append(otherActive, r)
+		}
+	}
+
+	result := make([]Reminder, 0, 30)
+	result = append(result, overdueList...)
+	if len(result) < 30 {
+		remaining := 30 - len(result)
+		if len(todayList) <= remaining {
+			result = append(result, todayList...)
+		} else {
+			result = append(result, todayList[:remaining]...)
+		}
+	}
+	if len(result) < 30 {
+		remaining := 30 - len(result)
+		if len(highPriority) <= remaining {
+			result = append(result, highPriority...)
+		} else {
+			result = append(result, highPriority[:remaining]...)
+		}
+	}
+	if len(result) < 30 {
+		remaining := 30 - len(result)
+		if len(otherActive) <= remaining {
+			result = append(result, otherActive...)
+		} else {
+			result = append(result, otherActive[:remaining]...)
+		}
+	}
+
+	prunedCount := len(reminders) - len(result)
+	if prunedCount < 0 {
+		prunedCount = 0
+	}
+	return result, prunedCount
+}
+
 func (s *AgendaService) ChatWithAI(userMessages []AIChatMessage) (string, error) {
 	cfg, _ := s.GetAIConfig()
 
@@ -113,14 +190,19 @@ func (s *AgendaService) ChatWithAI(userMessages []AIChatMessage) (string, error)
 	now := time.Now()
 	nowStr := now.Format("2006-01-02 15:04:05 (Monday)")
 
+	prunedReminders, prunedCount := pruneRemindersForAI(reminders, now)
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("当前系统准确时间: %s。\n", nowStr))
 	sb.WriteString("用户当前的日程列表如下:\n")
-	if len(reminders) == 0 {
+	if len(prunedReminders) == 0 {
 		sb.WriteString("(暂无日程)\n")
 	} else {
-		for i, r := range reminders {
+		for i, r := range prunedReminders {
 			sb.WriteString(fmt.Sprintf("%d. [%s] 标题: %s | 计划时间: %s", i+1, r.Status, r.Title, r.ScheduledAt))
+			if r.Priority != "" {
+				sb.WriteString(fmt.Sprintf(" | 优先级: %s", strings.ToUpper(r.Priority)))
+			}
 			if r.RepeatRule != "" {
 				sb.WriteString(fmt.Sprintf(" | 重复: %s", r.RepeatRule))
 			}
@@ -134,6 +216,9 @@ func (s *AgendaService) ChatWithAI(userMessages []AIChatMessage) (string, error)
 				sb.WriteString(fmt.Sprintf(" | 备注: %s", r.Notes))
 			}
 			sb.WriteString("\n")
+		}
+		if prunedCount > 0 {
+			sb.WriteString(fmt.Sprintf("\n(系统已优化上下文：另有 %d 项低优先级或远期日程已折叠)\n", prunedCount))
 		}
 	}
 
@@ -685,42 +770,60 @@ func callOpenAICompatible(baseURL, apiKey, model string, messages []AIChatMessag
 		return "", err
 	}
 
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
 	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
+	var lastErr error
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	// Exponential backoff retry (up to 2 attempts) for transient failures
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*150) * time.Millisecond)
+		}
+
+		httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", err
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("API 响应错误 (状态码 %d): %s", resp.StatusCode, string(bodyBytes))
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("API 响应错误 (状态码 %d): %s", resp.StatusCode, string(bodyBytes))
+		}
+
+		var chatResp openAIChatResponse
+		if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
+			return "", fmt.Errorf("解析响应失败: %w", err)
+		}
+
+		if chatResp.Error != nil && chatResp.Error.Message != "" {
+			return "", errors.New(chatResp.Error.Message)
+		}
+
+		if len(chatResp.Choices) == 0 {
+			return "", errors.New("模型未返回任何有效回复")
+		}
+
+		return chatResp.Choices[0].Message.Content, nil
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API 响应错误 (状态码 %d): %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var chatResp openAIChatResponse
-	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
-		return "", fmt.Errorf("解析响应失败: %w", err)
-	}
-
-	if chatResp.Error != nil && chatResp.Error.Message != "" {
-		return "", errors.New(chatResp.Error.Message)
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return "", errors.New("模型未返回任何有效回复")
-	}
-
-	return chatResp.Choices[0].Message.Content, nil
+	return "", fmt.Errorf("请求失败 (已重试): %w", lastErr)
 }

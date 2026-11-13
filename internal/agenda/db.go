@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -149,11 +150,30 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func InitDB() (*DB, error) {
-	dbPath := getDBPath()
+func (d *DB) Close() error {
+	if d.db != nil {
+		return d.db.Close()
+	}
+	return nil
+}
+
+func InitDBWithPath(dbPath string) (*DB, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
+	}
+
+	// Optimize SQLite performance & concurrency with Pragmas
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA busy_timeout = 5000;",
+		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA cache_size = -20000;", // 20 MB memory cache
+		"PRAGMA temp_store = MEMORY;",
+		"PRAGMA foreign_keys = ON;",
+	}
+	for _, p := range pragmas {
+		_, _ = db.Exec(p)
 	}
 
 	d := &DB{db: db, dbPath: dbPath}
@@ -161,6 +181,19 @@ func InitDB() (*DB, error) {
 		return nil, err
 	}
 	d.seedDefaultsIfEmpty()
+	return d, nil
+}
+
+func InitDB() (*DB, error) {
+	dbPath := getDBPath()
+	d, err := InitDBWithPath(dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Trigger asynchronous daily auto-backup check
+	go d.autoBackupIfStale()
+
 	return d, nil
 }
 
@@ -226,6 +259,9 @@ func (d *DB) migrate() error {
 	_, _ = d.db.Exec("CREATE INDEX IF NOT EXISTS idx_reminders_priority ON reminders(priority);")
 	_, _ = d.db.Exec("CREATE INDEX IF NOT EXISTS idx_reminders_deleted ON reminders(deleted_at);")
 	_, _ = d.db.Exec("CREATE INDEX IF NOT EXISTS idx_reminders_pinned ON reminders(is_pinned);")
+	_, _ = d.db.Exec("CREATE INDEX IF NOT EXISTS idx_reminders_active_pinned ON reminders(deleted_at, status, is_pinned, scheduled_at);")
+	_, _ = d.db.Exec("CREATE INDEX IF NOT EXISTS idx_reminders_updated_at ON reminders(updated_at);")
+	_, _ = d.db.Exec("CREATE INDEX IF NOT EXISTS idx_delivery_status_time ON delivery_records(status, delivered_at);")
 
 	return nil
 }
@@ -752,6 +788,14 @@ func (d *DB) BackupDatabase(destDir string) (string, error) {
 	backupFileName := fmt.Sprintf("agenda_backup_%s.db", time.Now().Format("20060102_150405"))
 	destPath := filepath.Join(destDir, backupFileName)
 
+	// Try atomic SQLite VACUUM INTO first (safely captures WAL transactions)
+	escapedPath := strings.ReplaceAll(destPath, "'", "''")
+	if _, err := d.db.Exec(fmt.Sprintf("VACUUM INTO '%s'", escapedPath)); err == nil {
+		_ = d.PruneOldBackups(destDir, 7)
+		return destPath, nil
+	}
+
+	// Fallback to safe file copy if VACUUM INTO is unsupported
 	src, err := os.Open(d.dbPath)
 	if err != nil {
 		return "", err
@@ -768,7 +812,70 @@ func (d *DB) BackupDatabase(destDir string) (string, error) {
 		return "", err
 	}
 
+	_ = d.PruneOldBackups(destDir, 7)
 	return destPath, nil
+}
+
+func (d *DB) PruneOldBackups(destDir string, keepCount int) error {
+	if keepCount <= 0 {
+		keepCount = 7
+	}
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		return err
+	}
+	type fileInfo struct {
+		path    string
+		modTime time.Time
+	}
+	var backups []fileInfo
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".db") {
+			info, err := e.Info()
+			if err == nil {
+				backups = append(backups, fileInfo{
+					path:    filepath.Join(destDir, e.Name()),
+					modTime: info.ModTime(),
+				})
+			}
+		}
+	}
+	if len(backups) <= keepCount {
+		return nil
+	}
+	// Sort ascending by modTime (oldest first)
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].modTime.Before(backups[j].modTime)
+	})
+	toDelete := len(backups) - keepCount
+	for i := 0; i < toDelete; i++ {
+		_ = os.Remove(backups[i].path)
+	}
+	return nil
+}
+
+func (d *DB) autoBackupIfStale() {
+	if d.dbPath == "" || d.dbPath == ":memory:" {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	destDir := filepath.Join(home, ".agenda", "backups")
+	_ = os.MkdirAll(destDir, 0755)
+
+	entries, err := os.ReadDir(destDir)
+	todayPrefix := fmt.Sprintf("agenda_backup_%s", time.Now().Format("20060102"))
+	if err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), todayPrefix) {
+				return // Already backed up today
+			}
+		}
+	}
+
+	_, _ = d.BackupDatabase(destDir)
 }
 
 func (d *DB) RestoreDatabase(backupPath string) error {
@@ -803,10 +910,18 @@ func (d *DB) RestoreDatabase(backupPath string) error {
 		return err
 	}
 
-	// Reopen sqlite connection
+	// Reopen sqlite connection with WAL pragmas
 	newDB, err := sql.Open("sqlite", d.dbPath)
 	if err != nil {
 		return err
+	}
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA busy_timeout = 5000;",
+		"PRAGMA synchronous = NORMAL;",
+	}
+	for _, p := range pragmas {
+		_, _ = newDB.Exec(p)
 	}
 	d.db = newDB
 	return d.migrate()
@@ -907,10 +1022,24 @@ func (d *DB) BatchSetPinned(ids []string, pinned bool) error {
 		val = 1
 	}
 	now := time.Now().Format(time.RFC3339)
-	for _, id := range ids {
-		_, _ = d.db.Exec("UPDATE reminders SET is_pinned = ?, updated_at = ? WHERE id = ?", val, now, id)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
 	}
-	return nil
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE reminders SET is_pinned = ?, updated_at = ? WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, id := range ids {
+		if _, err := stmt.Exec(val, now, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (d *DB) BatchAddTag(ids []string, tag string) error {
@@ -923,9 +1052,29 @@ func (d *DB) BatchAddTag(ids []string, tag string) error {
 	}
 
 	now := time.Now().Format(time.RFC3339)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	selectStmt, err := tx.Prepare("SELECT COALESCE(tags, '') FROM reminders WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer selectStmt.Close()
+
+	updateStmt, err := tx.Prepare("UPDATE reminders SET tags = ?, updated_at = ? WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer updateStmt.Close()
+
 	for _, id := range ids {
 		var currTags string
-		_ = d.db.QueryRow("SELECT COALESCE(tags, '') FROM reminders WHERE id = ?", id).Scan(&currTags)
+		if err := selectStmt.QueryRow(id).Scan(&currTags); err != nil {
+			continue
+		}
 		tagsList := strings.Split(currTags, ",")
 		hasTag := false
 		for _, t := range tagsList {
@@ -941,10 +1090,12 @@ func (d *DB) BatchAddTag(ids []string, tag string) error {
 			} else {
 				newTags = currTags + "," + tag
 			}
-			_, _ = d.db.Exec("UPDATE reminders SET tags = ?, updated_at = ? WHERE id = ?", newTags, now, id)
+			if _, err := updateStmt.Exec(newTags, now, id); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (d *DB) SaveAIChatMessage(id, role, content, actionsJSON string) error {
@@ -1068,10 +1219,24 @@ func (d *DB) BatchSetSubtasks(ids []string, subtasks string) error {
 	defer d.mu.Unlock()
 
 	now := time.Now().Format(time.RFC3339)
-	for _, id := range ids {
-		_, _ = d.db.Exec("UPDATE reminders SET subtasks = ?, updated_at = ? WHERE id = ?", subtasks, now, id)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
 	}
-	return nil
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE reminders SET subtasks = ?, updated_at = ? WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, id := range ids {
+		if _, err := stmt.Exec(subtasks, now, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (d *DB) Vacuum() error {

@@ -171,6 +171,10 @@
   --tide-text: #6de8fa;
   --ambient-glow-1: rgba(0, 210, 239, 0.14);
   --ambient-glow-2: rgba(0, 210, 148, 0.08);
+  --brand-primary: #00d2ef;
+  --brand-light: #6de8fa;
+  --fill-active: rgba(0, 210, 239, 0.14);
+  --border-brand: rgba(0, 210, 239, 0.36);
 }
 
 /* Scrolltide "Ember" Warm Horizon */
@@ -185,6 +189,10 @@
   --tide-text: #ffbf78;
   --ambient-glow-1: rgba(255, 139, 26, 0.14);
   --ambient-glow-2: rgba(70, 183, 255, 0.08);
+  --brand-primary: #ff8b1a;
+  --brand-light: #ffbf78;
+  --fill-active: rgba(255, 139, 26, 0.14);
+  --border-brand: rgba(255, 139, 26, 0.36);
 }
 
 /* Scrolltide "Orchid Swirl" Ultraviolet */
@@ -199,6 +207,10 @@
   --tide-text: #cbb6ff;
   --ambient-glow-1: rgba(166, 133, 255, 0.14);
   --ambient-glow-2: rgba(236, 108, 255, 0.075);
+  --brand-primary: #a685ff;
+  --brand-light: #cbb6ff;
+  --fill-active: rgba(166, 133, 255, 0.14);
+  --border-brand: rgba(166, 133, 255, 0.36);
 }
 
 *, *::before, *::after { box-sizing: border-box; }

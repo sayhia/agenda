@@ -14,17 +14,19 @@ import (
 )
 
 type Scheduler struct {
-	db     *DB
-	app    *application.App
-	stopCh chan struct{}
-	mu     sync.Mutex
+	db                *DB
+	app               *application.App
+	stopCh            chan struct{}
+	mu                sync.Mutex
+	recentlyTriggered map[string]time.Time
 }
 
 func NewScheduler(db *DB, app *application.App) *Scheduler {
 	return &Scheduler{
-		db:     db,
-		app:    app,
-		stopCh: make(chan struct{}),
+		db:                db,
+		app:               app,
+		stopCh:            make(chan struct{}),
+		recentlyTriggered: make(map[string]time.Time),
 	}
 }
 
@@ -59,6 +61,13 @@ func (s *Scheduler) checkReminders() {
 	now := time.Now()
 	hasUpdates := false
 
+	// Clean up stale triggers older than 5 minutes
+	for id, t := range s.recentlyTriggered {
+		if now.Sub(t) > 5*time.Minute {
+			delete(s.recentlyTriggered, id)
+		}
+	}
+
 	for _, r := range reminders {
 		if r.Status != "active" {
 			continue
@@ -69,8 +78,12 @@ func (s *Scheduler) checkReminders() {
 			continue
 		}
 
-		// Check if it's time to trigger
+		// Check if it's time to trigger (avoid double firing within 60s)
 		if now.After(scheduledTime) || now.Equal(scheduledTime) {
+			if last, ok := s.recentlyTriggered[r.ID]; ok && now.Sub(last) < 60*time.Second {
+				continue
+			}
+			s.recentlyTriggered[r.ID] = now
 			s.triggerReminder(&r, scheduledTime, now)
 			hasUpdates = true
 		}
@@ -182,6 +195,11 @@ func sendDesktopNotification(title, message string) {
 		}
 		cmd := exec.Command("osascript", "-e", script)
 		_ = cmd.Run()
+	} else if runtime.GOOS == "windows" {
+		psScript := fmt.Sprintf(`[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); $textNodes = $template.GetElementsByTagName('text'); $textNodes.Item(0).AppendChild($template.CreateTextNode(%q)) > $null; $textNodes.Item(1).AppendChild($template.CreateTextNode(%q)) > $null; $toast = [Windows.UI.Notifications.ToastNotification]::new($template); [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('AgendaButler').Show($toast)`, title, message)
+		_ = exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript).Run()
+	} else if runtime.GOOS == "linux" {
+		_ = exec.Command("notify-send", "-a", "Agenda Butler", "-i", "calendar", title, message).Run()
 	} else {
 		log.Printf("[Notification] %s: %s", title, message)
 	}

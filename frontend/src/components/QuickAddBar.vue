@@ -8,7 +8,13 @@ import { parseNaturalReminder, type ParsedReminder } from '../utils/nlp';
 import { getTagColor } from '../utils/tagColors';
 import TunerDurationDial from './TunerDurationDial.vue';
 
-const props = withDefaults(defineProps<{ submitting?: boolean }>(), { submitting: false });
+const props = withDefaults(defineProps<{
+  submitting?: boolean;
+  availableTags?: string[];
+}>(), {
+  submitting: false,
+  availableTags: () => ['工作', '生活', '学习', '健康', '紧急', '项目', '会议'],
+});
 
 const emit = defineEmits<{
   (e: 'submit', parsed: ParsedReminder, onSuccess: () => void): void;
@@ -23,6 +29,94 @@ const forceAi = ref<boolean | null>(null);
 const priorityOverride = ref<string | null>(null);
 const durationOverride = ref<number | null>(null);
 const busy = computed(() => isAiParsing.value || props.submitting);
+
+// # Tag Autocomplete Suggestion State
+const tagSuggestOpen = ref(false);
+const tagSuggestQuery = ref('');
+const tagSuggestIndex = ref(0);
+const tagMatchRange = ref<{ start: number; end: number } | null>(null);
+
+function checkTagAutocomplete() {
+  const el = textareaRef.value;
+  if (!el) {
+    tagSuggestOpen.value = false;
+    return;
+  }
+  const pos = el.selectionStart;
+  const text = el.value.slice(0, pos);
+  const match = /(?:^|\s)#([\w\u4e00-\u9fa5]*)$/.exec(text);
+  if (match) {
+    tagSuggestQuery.value = match[1] || '';
+    tagMatchRange.value = {
+      start: pos - match[1].length - 1,
+      end: pos,
+    };
+    tagSuggestOpen.value = true;
+    tagSuggestIndex.value = 0;
+  } else {
+    tagSuggestOpen.value = false;
+    tagMatchRange.value = null;
+  }
+}
+
+const filteredSuggestedTags = computed(() => {
+  const q = tagSuggestQuery.value.trim().toLowerCase();
+  const pool = props.availableTags || ['工作', '生活', '学习', '健康', '紧急', '项目', '会议'];
+  const candidates = pool.filter((t) => !q || t.toLowerCase().includes(q));
+  return candidates.slice(0, 6);
+});
+
+function insertTag(tag: string) {
+  const el = textareaRef.value;
+  if (!el || !tagMatchRange.value) return;
+  const before = inputVal.value.slice(0, tagMatchRange.value.start);
+  const after = inputVal.value.slice(tagMatchRange.value.end);
+  inputVal.value = `${before}#${tag} ${after}`;
+  tagSuggestOpen.value = false;
+  tagMatchRange.value = null;
+  void nextTick(() => {
+    resizeTextarea();
+    el.focus();
+    const newPos = before.length + tag.length + 2;
+    el.setSelectionRange(newPos, newPos);
+  });
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (tagSuggestOpen.value && filteredSuggestedTags.value.length > 0) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      tagSuggestIndex.value = (tagSuggestIndex.value + 1) % filteredSuggestedTags.value.length;
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      tagSuggestIndex.value = (tagSuggestIndex.value - 1 + filteredSuggestedTags.value.length) % filteredSuggestedTags.value.length;
+      return;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      const chosen = filteredSuggestedTags.value[tagSuggestIndex.value];
+      if (chosen) insertTag(chosen);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      tagSuggestOpen.value = false;
+      return;
+    }
+  }
+
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    submit();
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    reset();
+  }
+}
 
 function isLikelyCompositeSchedule(text: string): boolean {
   const value = text.trim();
@@ -109,6 +203,11 @@ function submit() {
   else submitLocal();
 }
 
+function onInput() {
+  resizeTextarea();
+  checkTagAutocomplete();
+}
+
 function resizeTextarea() {
   const element = textareaRef.value;
   if (!element) return;
@@ -133,7 +232,18 @@ defineExpose({ focus: () => textareaRef.value?.focus() });
         <svg v-if="!isAiMode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>
         <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" /><path d="m18 15 .9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15Z" /></svg>
       </span>
-      <textarea ref="textareaRef" v-model="inputVal" rows="1" placeholder="输入日程，例如：明天下午 3 点评审方案 #工作 P1（粘贴多条文本自动启用 AI Skein 拆解）" aria-label="快速添加日程" :disabled="busy" @input="resizeTextarea" @keydown.enter.exact.prevent="submit" @keydown.meta.enter.prevent="submit" @keydown.ctrl.enter.prevent="submit" @keydown.esc.prevent="reset"></textarea>
+      <textarea
+        ref="textareaRef"
+        v-model="inputVal"
+        rows="1"
+        placeholder="输入日程，例如：明天下午 3 点评审方案 #工作 P1（输入 # 联想标签，粘贴多条文本自动启用 AI 拆解）"
+        aria-label="快速添加日程"
+        :disabled="busy"
+        @input="onInput"
+        @click="checkTagAutocomplete"
+        @keyup="checkTagAutocomplete"
+        @keydown="handleKeydown"
+      ></textarea>
       <button v-if="inputVal" class="composer-clear" type="button" :disabled="busy" title="清空" aria-label="清空" @click="reset">×</button>
 
       <!-- Ember & Tide Style Rim-Lit Mode Switch -->
@@ -155,6 +265,38 @@ defineExpose({ focus: () => textareaRef.value?.focus() });
         <span>{{ busy ? (isAiParsing ? '解析中' : '保存中') : (isAiMode ? '拆解并创建' : '添加') }}</span>
         <kbd v-if="!busy">↵</kbd>
       </button>
+    </div>
+
+    <!-- Tag Autocomplete Floating Dropdown -->
+    <div
+      v-if="tagSuggestOpen && filteredSuggestedTags.length"
+      class="tag-autocomplete-popover"
+      role="listbox"
+      aria-label="标签联想"
+    >
+      <div class="popover-header">
+        <span>标签联想</span>
+        <small>↑↓ 选择 · ↵ / Tab 插入</small>
+      </div>
+      <div class="popover-list">
+        <button
+          v-for="(tag, idx) in filteredSuggestedTags"
+          :key="tag"
+          type="button"
+          class="popover-item"
+          :class="{ active: idx === tagSuggestIndex }"
+          :style="{
+            '--tag-color': getTagColor(tag).border,
+            '--tag-bg': getTagColor(tag).bg,
+            '--tag-text': getTagColor(tag).text,
+          }"
+          @click="insertTag(tag)"
+          @mouseenter="tagSuggestIndex = idx"
+        >
+          <span class="tag-hash">#</span>
+          <span class="tag-name">{{ tag }}</span>
+        </button>
+      </div>
     </div>
 
     <div v-if="inputVal.trim()" class="composer-preview" aria-live="polite">
@@ -361,4 +503,69 @@ textarea::placeholder { color: var(--text-quaternary); }
 .priority-picker .p0.active { background: rgba(255, 101, 104, 0.18); color: var(--danger); }
 .priority-picker .p1.active { background: color-mix(in srgb, var(--lime) 20%, transparent); color: var(--lime-strong); }
 .priority-picker .p2.active { background: var(--accent-soft); color: var(--tide-text); }
+
+/* # Tag Autocomplete Popover */
+.tag-autocomplete-popover {
+  position: absolute;
+  top: 48px;
+  left: 48px;
+  z-index: 50;
+  min-width: 190px;
+  max-width: 280px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-raised, #161a22);
+  box-shadow: 0 10px 28px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  padding: 6px;
+  animation: popover-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  padding: 2px 6px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+.popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.popover-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--motion-fast);
+}
+.popover-item.active,
+.popover-item:hover {
+  background: var(--tag-bg, var(--fill-hover));
+  border-color: var(--tag-color, var(--border-strong));
+  color: var(--tag-text, var(--text-primary));
+}
+.tag-hash {
+  color: var(--accent);
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.tag-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 </style>

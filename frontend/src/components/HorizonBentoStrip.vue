@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { formatTime } from '../utils/format';
 import { handlePointerGlow, resetPointerGlow } from '../utils/pointerGlow';
@@ -72,8 +72,19 @@ const todayStats = computed(() => {
   return { total, ended, activeAll, pct, filledSegments };
 });
 
+const localTick = ref(Date.now());
+let timer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  timer = setInterval(() => {
+    localTick.value = Date.now();
+  }, 1000);
+});
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+});
+
 const nextUpcoming = computed(() => {
-  const nowMs = props.nowTick || Date.now();
+  const nowMs = localTick.value;
   let bestFuture: Reminder | null = null;
   let bestFutureTime = Infinity;
   let bestOverdue: Reminder | null = null;
@@ -99,22 +110,31 @@ const nextUpcoming = computed(() => {
   const best = bestFuture || bestOverdue;
   if (!best) return null;
   const bestTime = bestFuture ? bestFutureTime : bestOverdueTime;
+  const diffSec = Math.round((bestTime - nowMs) / 1000);
   const diffMin = Math.round((bestTime - nowMs) / 60000);
   let badge = '';
   let state: 'normal' | 'soon' | 'overdue' = 'normal';
 
-  if (diffMin < 0) {
-    const overdueMin = Math.abs(diffMin);
-    if (overdueMin >= 60) {
-      const hrs = Math.floor(overdueMin / 60);
-      const mins = overdueMin % 60;
-      badge = mins > 0 ? `逾期 ${hrs} 小时 ${mins} 分` : `逾期 ${hrs} 小时`;
+  if (diffSec < 0) {
+    const overdueSec = Math.abs(diffSec);
+    if (overdueSec < 60) {
+      badge = `已逾期 ${overdueSec} 秒`;
     } else {
-      badge = `逾期 ${overdueMin} 分钟`;
+      const overdueMin = Math.floor(overdueSec / 60);
+      if (overdueMin >= 60) {
+        const hrs = Math.floor(overdueMin / 60);
+        const mins = overdueMin % 60;
+        badge = mins > 0 ? `逾期 ${hrs} 小时 ${mins} 分` : `逾期 ${hrs} 小时`;
+      } else {
+        badge = `逾期 ${overdueMin} 分钟`;
+      }
     }
     state = 'overdue';
-  } else if (diffMin === 0) {
+  } else if (diffSec <= 15) {
     badge = '即将开始';
+    state = 'soon';
+  } else if (diffSec < 60) {
+    badge = `${diffSec} 秒后`;
     state = 'soon';
   } else if (diffMin < 60) {
     badge = `${diffMin} 分钟后`;
