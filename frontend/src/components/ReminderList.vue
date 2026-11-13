@@ -503,6 +503,10 @@ function handleToggleSubtaskItem(r: Reminder, itemIdx: number) {
   if (list[itemIdx]) {
     list[itemIdx].done = !list[itemIdx].done;
     emit('update-subtasks', r.id, JSON.stringify(list));
+
+    if (list.length > 0 && list.every((s) => s.done) && r.status === 'active') {
+      emit('toast', `「${r.title}」全部子任务已完成！`, 'success');
+    }
   }
 }
 

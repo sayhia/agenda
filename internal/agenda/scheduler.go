@@ -158,6 +158,19 @@ func (s *Scheduler) triggerReminder(r *Reminder, scheduledTime, now time.Time) {
 		}
 
 		nextTime := calculateNextOccurrence(scheduledTime, r.RepeatRule, now)
+
+		if untilStr, ok := params["UNTIL"]; ok {
+			untilTime, err := parseFlexibleTime(untilStr)
+			if err != nil {
+				untilTime, err = parseICSTime(untilStr)
+			}
+			if err == nil && !nextTime.Before(untilTime) {
+				// Reached UNTIL deadline, mark as ended
+				_, _ = s.db.UpdateReminder(triggeredReminderUpdate(r, r.ScheduledAt, r.RepeatRule, "ended"))
+				return
+			}
+		}
+
 		_, _ = s.db.UpdateReminder(triggeredReminderUpdate(r, nextTime.Format(time.RFC3339), r.RepeatRule, "active"))
 	} else {
 		_, _ = s.db.UpdateReminder(triggeredReminderUpdate(r, r.ScheduledAt, r.RepeatRule, "ended"))

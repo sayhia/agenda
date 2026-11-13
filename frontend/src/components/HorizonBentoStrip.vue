@@ -74,13 +74,32 @@ const todayStats = computed(() => {
 
 const localTick = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | null = null;
-onMounted(() => {
+
+function setupTicker() {
+  if (timer) clearInterval(timer);
+  const intervalMs = typeof document !== 'undefined' && document.hidden ? 5000 : 1000;
   timer = setInterval(() => {
     localTick.value = Date.now();
-  }, 1000);
+  }, intervalMs);
+}
+
+function handleVisibilityChange() {
+  localTick.value = Date.now();
+  setupTicker();
+}
+
+onMounted(() => {
+  setupTicker();
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
 });
+
 onUnmounted(() => {
   if (timer) clearInterval(timer);
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }
 });
 
 const nextUpcoming = computed(() => {

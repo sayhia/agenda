@@ -15,6 +15,7 @@ import { parseReminderTags } from '../domain/reminder';
 import { formatDateLabel, formatRepeatLabel, formatTime } from '../utils/format';
 import { getTagColor } from '../utils/tagColors';
 import { sanitizeHTML } from '../utils/sanitize';
+import { extractActions, type ActionItem } from '../utils/aiAction';
 import { marked } from 'marked';
 
 marked.setOptions({
@@ -22,21 +23,7 @@ marked.setOptions({
   gfm: true,
 });
 
-export interface ActionItem {
-  action?: string;
-  id?: string;
-  title: string;
-  scheduled_at: string;
-  repeat_rule?: string;
-  lead_minutes?: number;
-  duration_minutes?: number;
-  notes?: string;
-  minutes?: number;
-  priority?: string;
-  tags?: string;
-  applied?: boolean;
-  items?: any[];
-}
+export type { ActionItem };
 
 interface MessageItem {
   id: string;
@@ -305,15 +292,24 @@ watch(
       if (history && history.length > 0) {
         messages.value = history.map((h) => {
           let actions: ActionItem[] | undefined;
+          let content = h.content;
           if (h.actions_json) {
             try {
               actions = JSON.parse(h.actions_json);
             } catch {}
           }
+          if ((!actions || actions.length === 0) && h.role === 'assistant') {
+            const extracted = extractActions(content);
+            if (extracted.actions.length > 0) {
+              actions = extracted.actions;
+              content = extracted.text;
+              void SaveAIChatMessage(h.id, h.role, content, JSON.stringify(actions)).catch(() => {});
+            }
+          }
           return {
             id: h.id,
             role: h.role as 'user' | 'assistant',
-            content: h.content,
+            content,
             actions,
           };
         });
@@ -390,6 +386,15 @@ async function regenerateAssistantMessage(msgId: string) {
 async function handleExtractFromMessage(m: MessageItem) {
   extractingMsgId.value = m.id;
   try {
+    const directExtract = extractActions(m.content);
+    if (directExtract.actions.length > 0) {
+      m.actions = directExtract.actions;
+      m.content = directExtract.text;
+      await persistMessage(m).catch(appendPersistenceError);
+      scrollToBottom();
+      return;
+    }
+
     const list = await ParseMultipleRemindersWithAI(m.content);
     if (!list || list.length === 0) return;
     m.actions = list.map((it) => ({
@@ -438,38 +443,6 @@ async function handleClearHistory() {
   }
 }
 
-function extractActions(content: string): { text: string; actions: ActionItem[] } {
-  const regex = /```agenda-action\s*([\s\S]*?)\s*```/g;
-  let cleanText = content;
-  const actions: ActionItem[] = [];
-
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content)) !== null) {
-    cleanText = cleanText.replace(match[0], '');
-    try {
-      const parsed = JSON.parse(match[1]);
-      if (Array.isArray(parsed)) {
-        for (const it of parsed) {
-          if (it && it.title) actions.push({ ...it, applied: false });
-        }
-      } else if (parsed && parsed.action === 'create_batch' && Array.isArray(parsed.items)) {
-        for (const it of parsed.items) {
-          if (it && it.title) actions.push({ ...it, applied: false });
-        }
-      } else if (parsed && Array.isArray(parsed.items)) {
-        for (const it of parsed.items) {
-          if (it && it.title) actions.push({ ...it, applied: false });
-        }
-      } else if (parsed && (parsed.title || parsed.action)) {
-        actions.push({ ...parsed, applied: false });
-      }
-    } catch {
-      // ignore invalid block
-    }
-  }
-
-  return { text: cleanText.trim(), actions };
-}
 
 async function runAssistantChatFromMessages(overridePrompt?: string, replaceIdx?: number) {
   const generation = chatGeneration;

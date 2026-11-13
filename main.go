@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"log"
 	"runtime"
 	"time"
@@ -86,6 +87,32 @@ func main() {
 		tray.SetIcon(trayColorIcon)
 	}
 	tray.SetTooltip("Agenda Butler — 日程管家")
+
+	updateTrayStatus := func() {
+		reminders, err := db.GetAllReminders()
+		if err != nil {
+			return
+		}
+		now := time.Now()
+		todayKey := now.Format("2006-01-02")
+		activeToday := 0
+		for _, r := range reminders {
+			if r.Status == "active" && len(r.ScheduledAt) >= 10 && r.ScheduledAt[:10] == todayKey {
+				activeToday++
+			}
+		}
+		if activeToday > 0 {
+			tray.SetTooltip(fmt.Sprintf("Agenda Butler — 今日尚有 %d 项待办推进中", activeToday))
+		} else {
+			tray.SetTooltip("Agenda Butler — 今日日程已清空")
+		}
+	}
+	updateTrayStatus()
+
+	app.Event.On("reminders-updated", func(event *application.CustomEvent) {
+		updateTrayStatus()
+	})
+
 	trayMenu := application.NewMenu()
 	trayMenu.Add("显示主窗口").OnClick(func(ctx *application.Context) {
 		mainWindow.Show()

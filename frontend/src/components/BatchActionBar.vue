@@ -6,6 +6,7 @@ const emit = defineEmits<{
   (e: 'batch-pause'): void;
   (e: 'batch-resume'): void;
   (e: 'batch-complete'): void;
+  (e: 'batch-postpone-hour'): void;
   (e: 'batch-postpone-day'): void;
   (e: 'batch-priority', priority: string): void;
   (e: 'batch-pin', pinned: boolean): void;
@@ -64,6 +65,7 @@ onUnmounted(() => {
         <div class="batch-summary"><strong>{{ count }}</strong><span>{{ busy ? '处理中…' : '项已选' }}</span></div>
         <span class="batch-separator"></span>
         <button class="batch-primary" type="button" @click="$emit('batch-complete')">完成</button>
+        <button type="button" title="顺延1小时" @click="$emit('batch-postpone-hour')">推迟 1h</button>
         <button type="button" @click="$emit('batch-postpone-day')">顺延一天</button>
 
         <div class="batch-popover-wrap">

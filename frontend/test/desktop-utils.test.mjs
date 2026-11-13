@@ -1,13 +1,26 @@
 import assert from 'node:assert/strict';
+
+if (typeof globalThis.localStorage === 'undefined') {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+  };
+}
+
 import {
   formatPanguText,
   parseNaturalReminder,
 } from '../src/utils/nlp.ts';
 import { checkTimeConflict, calculateScheduleDensity } from '../src/utils/conflict.ts';
 import { escapeHTML, sanitizeHTML } from '../src/utils/sanitize.ts';
-import { getTagColor } from '../src/utils/tagColors.ts';
+import { getTagColor, setCustomTagColor, getCustomTagColors } from '../src/utils/tagColors.ts';
 import { fuzzyMatchPinyin } from '../src/utils/pinyin.ts';
-import { playReminderChime, playFocusCompleteChime } from '../src/utils/audio.ts';
+import { playReminderChime, playFocusCompleteChime, getSoundVolume, setSoundVolume } from '../src/utils/audio.ts';
+import { exportToMarkdown } from '../src/utils/export.ts';
+import { t, getLanguage, setLanguage } from '../src/utils/i18n.ts';
 import {
   parseReminderSubtasks,
   parseReminderTags,
@@ -200,6 +213,69 @@ check('sound synthesizer functions are callable without throwing', () => {
   // In node environment without window.AudioContext, it safely returns or handles error
   assert.doesNotThrow(() => playReminderChime());
   assert.doesNotThrow(() => playFocusCompleteChime());
+});
+
+// 10. Volume and custom audio settings
+check('getSoundVolume and setSoundVolume clamp and preserve numbers', () => {
+  setSoundVolume(0.75);
+  assert.equal(getSoundVolume(), 0.75);
+  setSoundVolume(1.5);
+  assert.equal(getSoundVolume(), 1.0);
+  setSoundVolume(-0.2);
+  assert.equal(getSoundVolume(), 0.0);
+});
+
+// 11. Duration & all-day NLP parsing
+check('nlp handles 持续一个半小时, 两小时, 全天, 一刻钟', () => {
+  const refNow = new Date(2026, 10, 12, 9, 0, 0, 0);
+  const r1 = parseNaturalReminder('今天下午3点架构研讨 持续一个半小时', refNow);
+  assert.equal(r1.durationMinutes, 90);
+
+  const r2 = parseNaturalReminder('明天上午10点深度编程 持续两小时', refNow);
+  assert.equal(r2.durationMinutes, 120);
+
+  const r3 = parseNaturalReminder('周五公司年会 全天活动', refNow);
+  assert.equal(r3.durationMinutes, 480);
+});
+
+// 12. Markdown export generation
+check('exportToMarkdown formats reminders into readable checklist', () => {
+  const list = [
+    {
+      id: 'm1',
+      title: '发布新版',
+      scheduled_at: '2026-11-13T10:00:00Z',
+      priority: 'p0',
+      tags: '发布,架构',
+      status: 'active',
+    },
+  ];
+  const md = exportToMarkdown(list);
+  assert.ok(md.includes('日程管家 · 个人日程清单'));
+  assert.ok(md.includes('发布新版'));
+});
+
+// 13. Custom Tag Color persistence
+check('custom tag colors can be set and retrieved', () => {
+  setCustomTagColor('生产环境', '#ff3366');
+  const colors = getCustomTagColors();
+  assert.equal(colors['生产环境'], '#ff3366');
+  const token = getTagColor('生产环境');
+  assert.ok(token.text.includes('#ff3366'));
+});
+
+// 14. i18n dictionary and toggle
+check('i18n supports zh-CN and en-US dictionary lookup', () => {
+  setLanguage('zh-CN');
+  assert.equal(getLanguage(), 'zh-CN');
+  assert.equal(t('app.title'), '日程管家');
+  assert.equal(t('priority.p0'), 'P0 极紧急');
+
+  setLanguage('en-US');
+  assert.equal(getLanguage(), 'en-US');
+  assert.equal(t('app.title'), 'Agenda Butler');
+  assert.equal(t('priority.p0'), 'P0 Critical');
+  setLanguage('zh-CN'); // Reset
 });
 
 console.log(`✅ All ${passed} desktop utility unit tests passed!`);

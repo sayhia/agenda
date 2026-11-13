@@ -248,19 +248,14 @@ func (s *AgendaService) ChatWithAI(userMessages []AIChatMessage) (string, error)
    - 严禁只在文本中声称“已为您设为提醒/已排进日程/已设为今天的即时提醒”而【漏掉】agenda-action 代码块！
    - 系统依靠你输出的 agenda-action 代码块在前端渲染可交互的操作卡片供用户点击入库。如果你只在自然语言回复中说“已为你添加”，但没有附带代码块，系统实际上【根本无法创建任何日程】，用户会非常困惑！
    - 因此，无论是用户要求安排（如“帮我安排”、“生成提醒啊”、“设个闹钟”），还是你主动建议安排（如“帮你把暂停排进日程跟进”）：
-     你【必须且强制】在回复末尾附带 agenda-action 代码块（用三个反引号包裹），前端将自动渲染为可点击执行的交互卡片：
-     - 单个创建日程：
-       {"action": "create", "title": "...", "scheduled_at": "...", "priority": "p0|p1|p2|p3", "tags": "...", "notes": "..."}
-     - 批量创建日程（如早中晚多频次）：
-       {"action": "create_batch", "items": [{"title": "...", "scheduled_at": "...", "priority": "p0|p1|p2|p3", "tags": "...", "notes": "..."}]}
-     - 修改已有日程（基于上方已知日程 ID）：
-       {"action": "update", "id": "rem-xxx", "title": "...", "scheduled_at": "...", "notes": "..."}
-     - 删除已有日程：
-       {"action": "delete", "id": "rem-xxx", "title": "..."}
-     - 快速推迟（如“推迟半小时”）：
-       {"action": "snooze", "id": "rem-xxx", "minutes": 30}
-     - 标记完成日程：
-       {"action": "complete", "id": "rem-xxx"}
+     你【必须且强制】在回复末尾附带严格以 agenda-action 标签代码块包裹的 JSON（前端将自动渲染为可点击执行的交互卡片）：
+     * 单个创建日程格式示例：
+` + "```agenda-action\n{\"action\": \"create\", \"title\": \"架构评审\", \"scheduled_at\": \"2026-11-13T16:00:00+08:00\", \"priority\": \"p1\", \"tags\": \"工作,发布\", \"notes\": \"评审要点\"}\n```\n" + `     * 批量创建日程格式示例（只要包含多个待办或早中晚多频次，必须使用 create_batch 并包含 items 数组）：
+` + "```agenda-action\n{\"action\": \"create_batch\", \"items\": [{\"title\": \"清理待办清单中的僵尸任务\", \"scheduled_at\": \"2026-11-13T18:30:00+08:00\", \"priority\": \"p2\", \"tags\": \"工作,待办\", \"notes\": \"删除长期未动的任务。\"}, {\"title\": \"梳理项目文档结构\", \"scheduled_at\": \"2026-11-14T15:00:00+08:00\", \"priority\": \"p1\", \"tags\": \"工作,文档\", \"notes\": \"整理目录。\"}]}\n```\n" + `     * 修改已有日程格式示例（基于上方已知日程 ID）：
+` + "```agenda-action\n{\"action\": \"update\", \"id\": \"rem-xxx\", \"title\": \"新标题\", \"scheduled_at\": \"2026-11-14T10:00:00+08:00\", \"notes\": \"更新说明\"}\n```\n" + `     * 删除已有日程格式示例：
+` + "```agenda-action\n{\"action\": \"delete\", \"id\": \"rem-xxx\", \"title\": \"原标题\"}\n```\n" + `     * 快速推迟格式示例（如“推迟半小时”）：
+` + "```agenda-action\n{\"action\": \"snooze\", \"id\": \"rem-xxx\", \"minutes\": 30}\n```\n" + `     * 标记完成日程格式示例：
+` + "```agenda-action\n{\"action\": \"complete\", \"id\": \"rem-xxx\"}\n```\n" + `
 4. 【智能日程早报与复盘】
    当用户询问“今日早报”、“每日总结”、“复盘”时：
    - 结构化分析上方的全部已有日程，按时间轴（早、中、晚）梳理；
@@ -549,7 +544,35 @@ func (s *AgendaService) ParseMultipleRemindersWithAI(input string) ([]CreateRemi
 
 	var requests []CreateReminderRequest
 	if err := json.Unmarshal([]byte(respStr), &requests); err != nil {
-		return nil, fmt.Errorf("解析模型返回的 JSON 失败: %w", err)
+		parsed := false
+		start := strings.Index(respStr, "[")
+		end := strings.LastIndex(respStr, "]")
+		if start != -1 && end != -1 && end > start {
+			sub := respStr[start : end+1]
+			if err2 := json.Unmarshal([]byte(sub), &requests); err2 == nil {
+				parsed = true
+			}
+		}
+		if !parsed {
+			var single CreateReminderRequest
+			if errSingle := json.Unmarshal([]byte(respStr), &single); errSingle == nil && single.Title != "" {
+				requests = []CreateReminderRequest{single}
+				parsed = true
+			} else {
+				startObj := strings.Index(respStr, "{")
+				endObj := strings.LastIndex(respStr, "}")
+				if startObj != -1 && endObj != -1 && endObj > startObj {
+					subObj := respStr[startObj : endObj+1]
+					if errObj := json.Unmarshal([]byte(subObj), &single); errObj == nil && single.Title != "" {
+						requests = []CreateReminderRequest{single}
+						parsed = true
+					}
+				}
+			}
+		}
+		if !parsed {
+			return nil, fmt.Errorf("解析模型返回的 JSON 失败: %w", err)
+		}
 	}
 
 	for i := range requests {

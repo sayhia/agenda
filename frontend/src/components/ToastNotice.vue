@@ -30,8 +30,8 @@ defineEmits<{
       </svg>
     </div>
     <span class="toast-text">{{ message }}</span>
-    <button v-if="hasUndo" class="toast-undo-btn" @click="$emit('undo')">
-      撤销
+    <button v-if="hasUndo" class="toast-undo-btn" title="快捷撤销 (⌘/Ctrl+Z)" @click="$emit('undo')">
+      撤销 <kbd class="undo-kbd">⌘Z</kbd>
     </button>
     </div>
   </Transition>
@@ -75,6 +75,15 @@ defineEmits<{
   background: var(--tide);
   border-color: var(--tide);
   color: var(--ink-on-accent);
+}
+
+.undo-kbd {
+  margin-left: 3px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 9px;
+  font-family: var(--font-mono);
 }
 
 @keyframes toast-in {

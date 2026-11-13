@@ -799,6 +799,20 @@ mark.search-highlight { padding: 0 2px; border-radius: 3px; background: color-mi
 .agenda-app .icon-text-btn.danger { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
 
 @media print {
+  body { background: #fff !important; color: #111 !important; }
+  .agenda-sidebar,
+  .workspace-subbar,
+  .quick-add-wrap,
+  .horizon-bento,
+  .batch-bar-float,
+  .task-actions-capsule,
+  .icon-btn,
+  .tide-swirl-canvas,
+  .floating-pill { display: none !important; }
+  .main-workspace { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+  .task-row { page-break-inside: avoid; border-bottom: 1px solid #e2e8f0 !important; color: #111 !important; background: transparent !important; }
+  .task-title { color: #000 !important; font-weight: 600 !important; }
+
   html[data-print="briefing"] body { background: #fff !important; }
   html[data-print="briefing"] .agenda-app > :not(.modal-overlay) { display: none !important; }
   html[data-print="briefing"] .modal-overlay { position: static !important; display: block !important; background: #fff !important; }

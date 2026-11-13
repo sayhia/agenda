@@ -15,9 +15,12 @@ import {
   playReminderChime,
   getSoundProfile,
   setSoundProfile,
+  getSoundVolume,
+  setSoundVolume,
   type SoundProfile,
 } from '../utils/audio';
 import { exportToMarkdown, exportToCSV, triggerFileDownload } from '../utils/export';
+import { getLanguage, setLanguage, type Language } from '../utils/i18n';
 import ScrolltideSelect from './ScrolltideSelect.vue';
 
 const props = defineProps<{
@@ -46,7 +49,24 @@ const soundProfiles = [
   { id: 'droplet', name: '灵动自然水滴 (轻柔灵动)' },
 ];
 
+const currentLanguage = ref<Language>(getLanguage());
+const languageOptions = [
+  { value: 'zh-CN', label: '简体中文 (Simplified Chinese)' },
+  { value: 'en-US', label: 'English (US)' },
+];
+
+function handleLanguageChange(val: string) {
+  setLanguage(val as Language);
+  currentLanguage.value = val as Language;
+  emit('toast', val === 'en-US' ? 'Language switched to English' : '界面语言已切换为简体中文', 'success');
+}
+
 const soundProfileOptions = soundProfiles.map((sp) => ({ value: sp.id, label: sp.name }));
+const soundVolumePct = ref(Math.round(getSoundVolume() * 100));
+
+function handleVolumeChange() {
+  setSoundVolume(soundVolumePct.value / 100);
+}
 const leadPresets = [
   { value: '0', label: '准时' },
   { value: '5', label: '5m' },
@@ -397,6 +417,21 @@ function handleDndToggle() {
               <span class="theme-desc">{{ t.desc }}</span>
             </button>
           </div>
+
+          <div class="setting-item" style="margin-top: 14px;">
+            <div class="setting-label-group">
+              <span class="setting-name">界面显示语言</span>
+              <span class="setting-subtext">选择客户端语言 (Language)</span>
+            </div>
+            <ScrolltideSelect
+              v-model="currentLanguage"
+              :options="languageOptions"
+              compact
+              align="right"
+              aria-label="界面显示语言"
+              @change="handleLanguageChange"
+            />
+          </div>
         </div>
 
         <!-- Reminders Preference -->
@@ -431,6 +466,27 @@ function handleDndToggle() {
               aria-label="提醒音效音色"
               @change="handleSoundProfileChange"
             />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label-group">
+              <span class="setting-name">提醒音量大小</span>
+              <span class="setting-subtext">{{ soundVolumePct }}% 输出增益</span>
+            </div>
+            <div class="volume-slider-wrap">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                v-model.number="soundVolumePct"
+                class="volume-range-slider"
+                aria-label="提示音量大小"
+                @input="handleVolumeChange"
+                @change="playReminderChime()"
+              />
+              <span class="volume-value tabular-nums">{{ soundVolumePct }}%</span>
+            </div>
           </div>
 
           <div class="setting-item">
@@ -947,6 +1003,28 @@ function handleDndToggle() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.volume-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.volume-range-slider {
+  width: 120px;
+  height: 5px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.volume-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
 }
 
 .audio-test-btn {

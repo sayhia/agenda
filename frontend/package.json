@@ -9,7 +9,7 @@
     "build:dev": "vue-tsc && vite build --minify false --mode development",
     "build": "vue-tsc && vite build --mode production",
     "preview": "vite preview",
-    "test": "node test/desktop-utils.test.mjs"
+    "test": "node test/desktop-utils.test.mjs && node test/ai-action.test.mjs"
   },
   "dependencies": {
     "@wailsio/runtime": "3.1.0",

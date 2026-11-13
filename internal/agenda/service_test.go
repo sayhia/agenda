@@ -629,3 +629,84 @@ func TestPruneRemindersForAI(t *testing.T) {
 		t.Errorf("expected 10 today tasks preserved, got %d", todayFound)
 	}
 }
+
+func TestRecurrenceUntilRule(t *testing.T) {
+	start := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	after := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+
+	// Daily rule
+	next := calculateNextOccurrence(start, "FREQ=DAILY;INTERVAL=1", after)
+	if !next.After(after) {
+		t.Errorf("expected next occurrence after %v, got %v", after, next)
+	}
+
+	// Weekly with BYDAY
+	nextWeekly := calculateNextOccurrence(start, "FREQ=WEEKLY;BYDAY=MO,WE,FR", after)
+	if !nextWeekly.After(after) {
+		t.Errorf("expected next weekly occurrence after %v, got %v", after, nextWeekly)
+	}
+}
+
+func TestAuditDeliveryTrail(t *testing.T) {
+	svc, d := setupTestDB(t)
+
+	r, err := svc.AddReminder(CreateReminderRequest{
+		Title:       "审计追踪测试任务",
+		ScheduledAt: time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("failed to add reminder: %v", err)
+	}
+
+	// Should have recorded "created"
+	history, err := d.GetDeliveryHistory(r.ID)
+	if err != nil {
+		t.Fatalf("GetDeliveryHistory failed: %v", err)
+	}
+	if len(history) == 0 {
+		t.Errorf("expected at least 1 history record, got 0")
+	}
+
+	// Mark ended
+	_, err = svc.UpdateReminder(UpdateReminderRequest{
+		ID:          r.ID,
+		Title:       r.Title,
+		ScheduledAt: r.ScheduledAt,
+		Status:      "ended",
+	})
+	if err != nil {
+		t.Fatalf("UpdateReminder failed: %v", err)
+	}
+
+	historyAfter, err := d.GetDeliveryHistory(r.ID)
+	if err != nil {
+		t.Fatalf("GetDeliveryHistory failed: %v", err)
+	}
+	if len(historyAfter) < 2 {
+		t.Errorf("expected >= 2 history records after completion, got %d", len(historyAfter))
+	}
+}
+
+func TestVacuumAndCheckIntegrity(t *testing.T) {
+	_, d := setupTestDB(t)
+
+	report, err := d.CheckIntegrity()
+	if err != nil {
+		t.Fatalf("CheckIntegrity failed: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(report), "ok") {
+		t.Errorf("expected integrity check report to contain 'ok', got %s", report)
+	}
+
+	if err := d.Vacuum(); err != nil {
+		t.Fatalf("Vacuum failed: %v", err)
+	}
+
+	res, err := d.OptimizeDatabase()
+	if err != nil {
+		t.Fatalf("OptimizeDatabase failed: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(res), "ok") {
+		t.Errorf("expected OptimizeDatabase to contain 'ok', got %s", res)
+	}
+}

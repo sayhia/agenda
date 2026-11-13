@@ -1,5 +1,5 @@
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
-import { formatTime, formatDateLabel, formatRepeatLabel } from './format';
+import { formatTime, formatDateLabel, formatRepeatLabel } from './format.ts';
 
 /**
  * Exports current reminders into an elegant, formatted Markdown Planner document.
@@ -101,4 +101,18 @@ export function triggerFileDownload(content: string, filename: string, mimeType:
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Copies formatted Markdown tasks to system clipboard.
+ */
+export async function copyMarkdownToClipboard(reminders: Reminder[]): Promise<boolean> {
+  const md = exportToMarkdown(reminders);
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(md);
+      return true;
+    }
+  } catch {}
+  return false;
 }

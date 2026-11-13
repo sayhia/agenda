@@ -30,8 +30,35 @@ const PALETTE = [
   makeTagSwatch('#eab308'),
 ];
 
+const CUSTOM_TAG_STORAGE_KEY = 'agenda_custom_tag_colors';
+
+export function setCustomTagColor(tag: string, hex: string): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(CUSTOM_TAG_STORAGE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[tag.trim()] = hex;
+    localStorage.setItem(CUSTOM_TAG_STORAGE_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+export function getCustomTagColors(): Record<string, string> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(CUSTOM_TAG_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function getTagColor(tagName: string): { bg: string; text: string; border: string } {
   const clean = tagName.trim();
+  const customMap = getCustomTagColors();
+  if (customMap[clean]) {
+    return makeTagSwatch(customMap[clean]);
+  }
+
   if (PRESET_TAG_COLORS[clean]) {
     return PRESET_TAG_COLORS[clean];
   }

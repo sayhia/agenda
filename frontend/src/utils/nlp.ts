@@ -66,19 +66,39 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
   }
 
   // 2. Extract Duration (持续时长)
-  const durMatch = input.match(/(?:持续|时长|为期)\s*(\d+)\s*(分钟|小时|分|h|min|m)/i);
-  if (durMatch) {
-    const val = parseInt(durMatch[1], 10);
-    const unit = durMatch[2].toLowerCase();
-    if (unit.startsWith('h') || unit.includes('小时')) {
-      durationMinutes = val * 60;
-    } else {
-      durationMinutes = val;
-    }
-    input = input.replace(durMatch[0], ' ');
-  } else if (/持续半小时/i.test(input)) {
+  if (/(?:全天|一整天|整天)/i.test(input)) {
+    durationMinutes = 480;
+    input = input.replace(/(?:全天|一整天|整天)/i, ' ');
+  } else if (/(?:大半天|半天)/i.test(input)) {
+    durationMinutes = 240;
+    input = input.replace(/(?:大半天|半天)/i, ' ');
+  } else if (/(?:持续|时长|为期)\s*(?:一个半|1个半|1\.5)\s*小时/i.test(input)) {
+    durationMinutes = 90;
+    input = input.replace(/(?:持续|时长|为期)\s*(?:一个半|1个半|1\.5)\s*小时/i, ' ');
+  } else if (/(?:持续|时长|为期)\s*(?:两|2)\s*小时/i.test(input)) {
+    durationMinutes = 120;
+    input = input.replace(/(?:持续|时长|为期)\s*(?:两|2)\s*小时/i, ' ');
+  } else if (/(?:持续|时长|为期)\s*(?:一|1)\s*小时/i.test(input)) {
+    durationMinutes = 60;
+    input = input.replace(/(?:持续|时长|为期)\s*(?:一|1)\s*小时/i, ' ');
+  } else if (/(?:持续|时长|为期)?\s*半小时/i.test(input)) {
     durationMinutes = 30;
-    input = input.replace(/持续半小时/i, ' ');
+    input = input.replace(/(?:持续|时长|为期)?\s*半小时/i, ' ');
+  } else if (/(?:持续|时长|为期)?\s*(?:一刻钟|1刻钟)/i.test(input)) {
+    durationMinutes = 15;
+    input = input.replace(/(?:持续|时长|为期)?\s*(?:一刻钟|1刻钟)/i, ' ');
+  } else {
+    const durMatch = input.match(/(?:持续|时长|为期)\s*(\d+)\s*(分钟|小时|分|h|min|m)/i);
+    if (durMatch) {
+      const val = parseInt(durMatch[1], 10);
+      const unit = durMatch[2].toLowerCase();
+      if (unit.startsWith('h') || unit.includes('小时')) {
+        durationMinutes = val * 60;
+      } else {
+        durationMinutes = val;
+      }
+      input = input.replace(durMatch[0], ' ');
+    }
   }
 
   // 3. Extract Recurrence (重复模式)

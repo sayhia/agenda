@@ -22,14 +22,32 @@ function getAudioContext(): AudioContext | null {
 export type SoundProfile = 'crystal' | 'cyber' | 'zen' | 'droplet';
 
 export function getSoundProfile(): SoundProfile {
+  if (typeof localStorage === 'undefined') return 'crystal';
   return (localStorage.getItem('agenda_sound_profile') as SoundProfile) || 'crystal';
 }
 
 export function setSoundProfile(profile: SoundProfile): void {
+  if (typeof localStorage === 'undefined') return;
   localStorage.setItem('agenda_sound_profile', profile);
 }
 
-export function playReminderChime(volume: number = 0.25, overrideProfile?: SoundProfile): void {
+export function getSoundVolume(): number {
+  if (typeof localStorage === 'undefined') return 0.28;
+  const raw = localStorage.getItem('agenda_sound_volume');
+  if (raw) {
+    const parsed = parseFloat(raw);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) return parsed;
+  }
+  return 0.28;
+}
+
+export function setSoundVolume(v: number): void {
+  if (typeof localStorage === 'undefined') return;
+  const clamped = Math.max(0, Math.min(1, v));
+  localStorage.setItem('agenda_sound_volume', String(clamped));
+}
+
+export function playReminderChime(volume: number = getSoundVolume(), overrideProfile?: SoundProfile): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;

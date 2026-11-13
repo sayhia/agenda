@@ -42,6 +42,8 @@ const emit = defineEmits<{
   (e: 'export-csv'): void;
   (e: 'select-theme', theme: string): void;
   (e: 'edit-reminder', reminder: Reminder): void;
+  (e: 'copy-markdown'): void;
+  (e: 'optimize-db'): void;
 }>();
 
 const query = ref('');
@@ -249,6 +251,22 @@ const staticCommands = computed<CommandItem[]>(() => [
     subtitle: '优雅紫罗兰微光，柔和视觉体验',
     icon: '✦',
     action: () => emit('select-theme', 'aurora'),
+  },
+  {
+    id: 'export-markdown',
+    category: '数据与维护',
+    title: '导出待办清单为 Markdown (复制)',
+    subtitle: '一键将当前待办排期导出并写入系统剪贴板',
+    icon: '📋',
+    action: () => emit('copy-markdown'),
+  },
+  {
+    id: 'db-optimize',
+    category: '数据与维护',
+    title: '数据库体检与整理 (VACUUM)',
+    subtitle: '检测 SQLite 完整性并回收碎片空间',
+    icon: '⚡',
+    action: () => emit('optimize-db'),
   },
 ]);
 

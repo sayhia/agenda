@@ -20,12 +20,13 @@ import {
   TriggerTestNotification,
   DuplicateReminder,
   RestoreReminder,
+  OptimizeDatabase,
 } from '../bindings/agenda/internal/agenda/agendaservice';
 import type { Reminder, DeliveryRecord, UpdateReminderRequest } from '../bindings/agenda/internal/agenda/models';
 import type { ParsedReminder } from './utils/nlp';
 import { formatDateLabel } from './utils/format';
 import { playReminderChime, playCompleteSound } from './utils/audio';
-import { exportToMarkdown, triggerFileDownload } from './utils/export';
+import { exportToMarkdown, copyMarkdownToClipboard, triggerFileDownload } from './utils/export';
 import { parseReminderTags, toUpdateReminderRequest } from './domain/reminder';
 
 import type { StatsData, AgendaView } from './types/ui';
@@ -818,6 +819,24 @@ async function handleSnooze(reminder: Reminder, minutes: number) {
   }
 }
 
+async function handleCopyMarkdown() {
+  const ok = await copyMarkdownToClipboard(reminders.value);
+  if (ok) {
+    showToast('已复制 Markdown 待办清单至剪贴板', 'success');
+  } else {
+    showToast('复制失败，请重试', 'error');
+  }
+}
+
+async function handleOptimizeDB() {
+  try {
+    const res = await OptimizeDatabase();
+    showToast(res || '数据库检测正常，已完成碎片整理', 'success');
+  } catch (err: any) {
+    showToast(`数据库维护失败: ${err.message || err}`, 'error');
+  }
+}
+
 function handleCloseHistory() {
   historyRequestSequence++;
   isHistoryLoading.value = false;
@@ -863,6 +882,38 @@ async function handleBatchComplete() {
     showToast(`已将选中的 ${count} 项日程标记为已完成`, 'success');
   } catch (err: any) {
     showToast(`批量完成失败: ${err.message || err}`, 'error');
+  }
+}
+
+async function handleBatchPostponeHour() {
+  if (isBatchBusy.value) return;
+  isBatchBusy.value = true;
+  const successes: string[] = [];
+  const failures: string[] = [];
+  const targets = selectedIds.value
+    .map((id) => reminders.value.find((item) => item.id === id))
+    .filter((item): item is Reminder => Boolean(item));
+
+  for (const item of targets) {
+    try {
+      const date = new Date(item.scheduled_at);
+      date.setHours(date.getHours() + 1);
+      await updateReminderLatest(item, { scheduled_at: date.toISOString() });
+      successes.push(item.id);
+    } catch {
+      failures.push(item.id);
+    }
+  }
+
+  selectedIds.value = failures;
+  isBatchBusy.value = false;
+  await loadReminders();
+
+  if (successes.length > 0) {
+    showToast(`已成功顺延 ${successes.length} 项日程 1 小时`, 'success');
+  }
+  if (failures.length > 0) {
+    showToast(`${failures.length} 项日程顺延失败`, 'error');
   }
 }
 
@@ -1267,6 +1318,11 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
     } else if (e.key.toLowerCase() === 'f') {
       e.preventDefault();
       workspaceHeaderRef.value?.focusSearch();
+    } else if (e.key.toLowerCase() === 'z') {
+      if (lastDeletedId.value || hasUndo.value) {
+        e.preventDefault();
+        handleUndoDelete();
+      }
     }
     return;
   }
@@ -1444,9 +1500,10 @@ onMounted(async () => {
       const data = payload?.data || payload;
       const soundEnabled = localStorage.getItem('agenda_sound_enabled') !== 'false';
       const isQuietHours = isWithinQuietHours();
-      if (soundEnabled && !isQuietHours) playReminderChime(0.28);
+      const isEmergency = data?.priority === 'p0' || data?.is_emergency;
+      if (soundEnabled && (!isQuietHours || isEmergency)) playReminderChime();
       showToast(
-        isQuietHours ? `日程到期：${data.title || '提醒'}（免打扰时段）` : `日程到期：${data.title || '提醒'}`,
+        isQuietHours && !isEmergency ? `日程到期：${data.title || '提醒'}（免打扰静音）` : `日程到期：${data.title || '提醒'}`,
         'info'
       );
       void loadReminders();
@@ -1643,6 +1700,7 @@ onUnmounted(() => {
         :count="selectedIds.length"
         :busy="isBatchBusy"
         @batch-complete="handleBatchComplete"
+        @batch-postpone-hour="handleBatchPostponeHour"
         @batch-postpone-day="handleBatchPostponeDay"
         @batch-priority="handleBatchPriority"
         @batch-pin="handleBatchPin"
@@ -1752,6 +1810,8 @@ onUnmounted(() => {
       @export-csv="handleExportCSV"
       @select-theme="handleSelectTheme"
       @edit-reminder="openEditModal"
+      @copy-markdown="handleCopyMarkdown"
+      @optimize-db="handleOptimizeDB"
     />
 
     <!-- Trash Bin Modal (Round 30) -->

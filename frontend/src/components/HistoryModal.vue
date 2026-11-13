@@ -22,6 +22,17 @@ function formatDeliveryTime(iso: string): string {
   const sec = String(d.getSeconds()).padStart(2, '0');
   return `${m}-${day} ${h}:${min}:${sec}`;
 }
+
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case 'created': return '已创建';
+    case 'completed': return '已完结';
+    case 'paused': return '已暂停';
+    case 'success': case 'sent': return '已触发';
+    case 'failed': return '触发失败';
+    default: return status || '已记录';
+  }
+}
 </script>
 
 <template>
@@ -44,12 +55,12 @@ function formatDeliveryTime(iso: string): string {
         </div>
 
         <div v-else class="timeline">
-          <div v-for="rec in records" :key="rec.id" class="timeline-item" :class="{ 'is-failed': rec.status !== 'success' }">
+          <div v-for="rec in records" :key="rec.id" class="timeline-item" :class="{ 'is-failed': rec.status === 'failed' }">
             <div class="timeline-marker"></div>
             <div class="timeline-body">
               <div class="timeline-header">
                 <span class="delivery-time tabular-nums">{{ formatDeliveryTime(rec.delivered_at) }}</span>
-                <span class="delivery-badge" :class="rec.status">{{ rec.status === 'success' ? '已触发' : '失败' }}</span>
+                <span class="delivery-badge" :class="rec.status">{{ getStatusLabel(rec.status) }}</span>
               </div>
               <p class="delivery-prompt">{{ rec.prompt || '已发送桌面通知' }}</p>
               <p v-if="rec.error" class="delivery-error">{{ rec.error }}</p>
@@ -195,13 +206,26 @@ function formatDeliveryTime(iso: string): string {
   color: var(--text-secondary);
 }
 
-.delivery-badge.success {
+.delivery-badge.success,
+.delivery-badge.completed {
   background: color-mix(in srgb, var(--success, #10b981) 16%, transparent);
   border-color: color-mix(in srgb, var(--success, #10b981) 36%, transparent);
   color: var(--success, #10b981);
 }
 
-.delivery-badge:not(.success) {
+.delivery-badge.created {
+  background: color-mix(in srgb, var(--tide, #46b7ff) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tide, #46b7ff) 36%, transparent);
+  color: var(--tide-text, #46b7ff);
+}
+
+.delivery-badge.paused {
+  background: color-mix(in srgb, var(--warning, #f59e0b) 16%, transparent);
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 36%, transparent);
+  color: var(--warning, #f59e0b);
+}
+
+.delivery-badge.failed {
   background: color-mix(in srgb, var(--danger, #ef4444) 16%, transparent);
   border-color: color-mix(in srgb, var(--danger, #ef4444) 36%, transparent);
   color: var(--danger, #ef4444);

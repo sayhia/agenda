@@ -6,6 +6,8 @@
 export {
   getSoundProfile,
   setSoundProfile,
+  getSoundVolume,
+  setSoundVolume,
   playReminderChime,
   playCompleteSound,
   playFocusCompleteChime,

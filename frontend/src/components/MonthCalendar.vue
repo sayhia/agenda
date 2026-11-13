@@ -116,6 +116,7 @@ interface CalendarCell {
   dateNum: number;
   isCurrentMonth: boolean;
   isToday: boolean;
+  isWeekend: boolean;
   dateKey: string;
   items: Reminder[];
 }
@@ -145,6 +146,7 @@ const cells = computed<CalendarCell[]>(() => {
 
     const isCurrentMonth = d.getMonth() === month;
     const isToday = dateKey === todayKey;
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
     const items = remindersByDate.value.get(dateKey) || [];
 
@@ -153,6 +155,7 @@ const cells = computed<CalendarCell[]>(() => {
       dateNum: d.getDate(),
       isCurrentMonth,
       isToday,
+      isWeekend,
       dateKey,
       items,
     });
@@ -272,13 +275,13 @@ function handleCellDrop(event: DragEvent, dateKey: string) {
 
     <!-- Weekday Headers -->
     <div class="weekday-row">
-      <span>周日</span>
+      <span class="weekend">周日</span>
       <span>周一</span>
       <span>周二</span>
       <span>周三</span>
       <span>周四</span>
       <span>周五</span>
-      <span>周六</span>
+      <span class="weekend">周六</span>
     </div>
 
     <!-- 7-Column Grid -->
@@ -293,6 +296,7 @@ function handleCellDrop(event: DragEvent, dateKey: string) {
         :class="{
           outside: !c.isCurrentMonth,
           today: c.isToday,
+          weekend: c.isWeekend,
           selected: selectedDayCell?.dateKey === c.dateKey,
           'density-heavy': c.items.length >= 5,
           'density-medium': c.items.length >= 3 && c.items.length < 5,
@@ -308,7 +312,14 @@ function handleCellDrop(event: DragEvent, dateKey: string) {
       >
         <div class="cell-head">
           <span class="cell-day tabular-nums">{{ c.dateNum }}</span>
-          <span v-if="c.items.length" class="cell-count">{{ c.items.length }}</span>
+          <div class="cell-indicators">
+            <span v-if="c.items.length >= 3" class="heat-dots" :title="`任务密集：${c.items.length} 项`">
+              <i class="heat-dot" :class="{ hot: c.items.length >= 5 }"></i>
+              <i class="heat-dot" :class="{ hot: c.items.length >= 5 }"></i>
+              <i class="heat-dot" :class="{ hot: c.items.length >= 5 }"></i>
+            </span>
+            <span v-if="c.items.length" class="cell-count">{{ c.items.length }}</span>
+          </div>
         </div>
 
         <div class="cell-tasks">
@@ -467,6 +478,10 @@ function handleCellDrop(event: DragEvent, dateKey: string) {
   margin-bottom: 6px;
 }
 
+.weekday-row span.weekend {
+  color: var(--text-quaternary);
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -484,6 +499,10 @@ function handleCellDrop(event: DragEvent, dateKey: string) {
   gap: 4px;
   overflow: hidden;
   transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+
+.calendar-cell.weekend:not(.today):not(.outside) {
+  background: color-mix(in srgb, var(--surface-raised) 45%, var(--fill-subtle));
 }
 
 .calendar-cell:hover {
@@ -519,6 +538,30 @@ function handleCellDrop(event: DragEvent, dateKey: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.cell-indicators {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.heat-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+}
+
+.heat-dot {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: var(--tide);
+  opacity: 0.85;
+}
+
+.heat-dot.hot {
+  background: var(--lime);
 }
 
 .cell-day {

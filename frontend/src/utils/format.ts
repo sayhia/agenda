@@ -2,7 +2,7 @@
  * Date, time, and recurrence formatting utilities.
  */
 
-import { escapeHTML } from './sanitize';
+import { escapeHTML } from './sanitize.ts';
 
 export function formatTime(isoString: string): string {
   if (!isoString) return '--:--';
