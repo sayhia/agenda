@@ -6,7 +6,7 @@
 name: "agenda"
 arch: ${GOARCH}
 platform: "linux"
-version: "1.8.0"
+version: "1.9.0"
 section: "utils"
 priority: "optional"
 maintainer: "sayhia <noreply@agendabutler.local>"

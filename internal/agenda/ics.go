@@ -42,7 +42,7 @@ func ExportICS(reminders []Reminder) string {
 	var sb strings.Builder
 	sb.WriteString("BEGIN:VCALENDAR\r\n")
 	sb.WriteString("VERSION:2.0\r\n")
-	sb.WriteString("PRODID:-//Agenda Butler 1.8.0//EN\r\n")
+	sb.WriteString("PRODID:-//Agenda Butler 1.9.0//EN\r\n")
 	sb.WriteString("CALSCALE:GREGORIAN\r\n")
 	sb.WriteString("METHOD:PUBLISH\r\n")
 
