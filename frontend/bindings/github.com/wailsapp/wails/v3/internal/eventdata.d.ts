@@ -8,11 +8,18 @@ import type { Events } from "@wailsio/runtime";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "desktop-status-updated": boolean;
+            "focus-bind-reminder": string;
+            "focus-command": string;
+            "focus-state-sync": string;
+            "open-ai-action-draft": string;
             "open-ai-drawer": boolean;
             "open-create-modal": boolean;
+            "open-reminder-detail": string;
+            "open-settings-tab": string;
+            "reminder-lead-triggered": { [_ in string]?: any } | null;
             "reminder-triggered": { [_ in string]?: any } | null;
             "reminders-updated": boolean;
-            "time": string;
             "window-fullscreen": boolean;
         }
     }

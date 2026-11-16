@@ -10,4 +10,21 @@ export default defineConfig({
     strictPort: true,
   },
   plugins: [vue(), wails("./bindings")],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/vue") || id.includes("node_modules/@vue")) {
+            return "vendor-vue";
+          }
+          if (id.includes("node_modules/marked")) {
+            return "vendor-marked";
+          }
+          if (id.includes("node_modules/@wailsio/runtime")) {
+            return "vendor-wails";
+          }
+        },
+      },
+    },
+  },
 });

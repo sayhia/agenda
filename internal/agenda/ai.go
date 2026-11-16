@@ -72,6 +72,9 @@ func (s *AgendaService) GetAIConfig() (*AIConfig, error) {
 }
 
 func (s *AgendaService) SaveAIConfig(cfg AIConfig) error {
+	if s == nil || s.db == nil {
+		return errors.New("database not initialized")
+	}
 	m := map[string]string{
 		"ai_base_url": strings.TrimSpace(cfg.BaseURL),
 		"ai_api_key":  strings.TrimSpace(cfg.APIKey),
@@ -128,14 +131,12 @@ func pruneRemindersForAI(reminders []Reminder, now time.Time) ([]Reminder, int) 
 		if r.Status == "ended" {
 			continue
 		}
-		t, err := time.Parse(time.RFC3339, r.ScheduledAt)
-		if err != nil {
-			t, err = time.Parse("2006-01-02 15:04:05", r.ScheduledAt)
-		}
+		t, err := parseFlexibleTime(r.ScheduledAt)
 		if err != nil {
 			otherActive = append(otherActive, r)
 			continue
 		}
+		t = t.In(now.Location())
 
 		if t.Before(now) {
 			overdueList = append(overdueList, r)
@@ -183,6 +184,9 @@ func pruneRemindersForAI(reminders []Reminder, now time.Time) ([]Reminder, int) 
 }
 
 func (s *AgendaService) ChatWithAI(userMessages []AIChatMessage) (string, error) {
+	if s == nil || s.db == nil {
+		return "", errors.New("database not initialized")
+	}
 	cfg, _ := s.GetAIConfig()
 
 	// 1. Gather current context (Time, Reminders)
@@ -265,6 +269,10 @@ func (s *AgendaService) ChatWithAI(userMessages []AIChatMessage) (string, error)
 	fullMessages := []AIChatMessage{
 		{Role: "system", Content: systemPrompt},
 	}
+	const maxChatHistory = 24
+	if len(userMessages) > maxChatHistory {
+		userMessages = userMessages[len(userMessages)-maxChatHistory:]
+	}
 	fullMessages = append(fullMessages, userMessages...)
 
 	// If no API Key configured, fallback to smart offline assistant
@@ -288,8 +296,9 @@ func (s *AgendaService) GenerateDailyBriefing() (string, error) {
 		if r.Status != "active" {
 			continue
 		}
-		if t, err := time.Parse(time.RFC3339, r.ScheduledAt); err == nil {
-			if t.After(todayStart) && t.Before(todayEnd) {
+		if t, err := parseFlexibleTime(r.ScheduledAt); err == nil {
+			t = t.In(now.Location())
+			if !t.Before(todayStart) && t.Before(todayEnd) {
 				todayItems = append(todayItems, r)
 			}
 		}
@@ -304,8 +313,8 @@ func (s *AgendaService) GenerateDailyBriefing() (string, error) {
 		} else {
 			b.WriteString(fmt.Sprintf("今天共有 **%d** 项待办事项：\n", len(todayItems)))
 			for i, it := range todayItems {
-				t, _ := time.Parse(time.RFC3339, it.ScheduledAt)
-				b.WriteString(fmt.Sprintf("%d. ⏰ **%s** — %s", i+1, t.Format("15:04"), it.Title))
+				t, _ := parseFlexibleTime(it.ScheduledAt)
+				b.WriteString(fmt.Sprintf("%d. ⏰ **%s** — %s", i+1, t.In(now.Location()).Format("15:04"), it.Title))
 				if it.Notes != "" {
 					b.WriteString(fmt.Sprintf(" *(%s)*", it.Notes))
 				}
@@ -350,8 +359,8 @@ func (s *AgendaService) AnalyzeScheduleConflicts() (string, error) {
 
 	for i := 0; i < len(activeList); i++ {
 		for j := i + 1; j < len(activeList); j++ {
-			tA, errA := time.Parse(time.RFC3339, activeList[i].ScheduledAt)
-			tB, errB := time.Parse(time.RFC3339, activeList[j].ScheduledAt)
+			tA, errA := parseFlexibleTime(activeList[i].ScheduledAt)
+			tB, errB := parseFlexibleTime(activeList[j].ScheduledAt)
 			if errA != nil || errB != nil {
 				continue
 			}
@@ -383,10 +392,10 @@ func (s *AgendaService) AnalyzeScheduleConflicts() (string, error) {
 		var b strings.Builder
 		b.WriteString(fmt.Sprintf("⚠️ **检测到 %d 处日程时间重叠冲突**：\n\n", len(conflicts)))
 		for i, c := range conflicts {
-			tA, _ := time.Parse(time.RFC3339, c.A.ScheduledAt)
-			tB, _ := time.Parse(time.RFC3339, c.B.ScheduledAt)
+			tA, _ := parseFlexibleTime(c.A.ScheduledAt)
+			tB, _ := parseFlexibleTime(c.B.ScheduledAt)
 			b.WriteString(fmt.Sprintf("%d. 「**%s**」（%s）与「**%s**」（%s）在时间上存在交叉！\n",
-				i+1, c.A.Title, tA.Format("01-02 15:04"), c.B.Title, tB.Format("01-02 15:04")))
+				i+1, c.A.Title, tA.In(time.Local).Format("01-02 15:04"), c.B.Title, tB.In(time.Local).Format("01-02 15:04")))
 		}
 		b.WriteString("\n建议您调整其中一项的时间以避免同时撞期。")
 		return b.String(), nil
@@ -629,47 +638,148 @@ func (s *AgendaService) generateOfflineChatResponse(messages []AIChatMessage, re
 		noonTime := fmt.Sprintf("%sT13:00:00%s", today, zoneOffset)
 		eveningTime := fmt.Sprintf("%sT19:00:00%s", today, zoneOffset)
 
-		actionJSON := fmt.Sprintf(`{
-  "action": "create_batch",
-  "items": [
-    {
-      "title": "%s (早间)",
-      "scheduled_at": "%s",
-      "repeat_rule": "FREQ=DAILY",
-      "duration_minutes": 15,
-      "notes": "早间 CPL leads 指标与使用量核查"
-    },
-    {
-      "title": "%s (午间)",
-      "scheduled_at": "%s",
-      "repeat_rule": "FREQ=DAILY",
-      "duration_minutes": 15,
-      "notes": "午间 CPL leads 进度与线索成本核查"
-    },
-    {
-      "title": "%s (晚间)",
-      "scheduled_at": "%s",
-      "repeat_rule": "FREQ=DAILY",
-      "duration_minutes": 15,
-      "notes": "晚间 CPL leads 全天使用量汇总与复盘"
-    }
-  ]
-}`, cleanTitle, morningTime, cleanTitle, noonTime, cleanTitle, eveningTime)
+		payload := map[string]interface{}{
+			"action": "create_batch",
+			"items": []map[string]interface{}{
+				{
+					"title":            fmt.Sprintf("%s (早间)", cleanTitle),
+					"scheduled_at":     morningTime,
+					"repeat_rule":      "FREQ=DAILY",
+					"duration_minutes": 15,
+					"notes":            "早间指标与进度核查",
+				},
+				{
+					"title":            fmt.Sprintf("%s (午间)", cleanTitle),
+					"scheduled_at":     noonTime,
+					"repeat_rule":      "FREQ=DAILY",
+					"duration_minutes": 15,
+					"notes":            "午间进度跟进与核查",
+				},
+				{
+					"title":            fmt.Sprintf("%s (晚间)", cleanTitle),
+					"scheduled_at":     eveningTime,
+					"repeat_rule":      "FREQ=DAILY",
+					"duration_minutes": 15,
+					"notes":            "晚间汇总与最终复盘",
+				},
+			},
+		}
+		encoded, _ := json.MarshalIndent(payload, "", "  ")
+		actionJSON := string(encoded)
 
 		return fmt.Sprintf("已为您智能识别出每日高频循环任务：“**%s**”！\n\n根据【早中晚各一次】的规律，已为您拆解为 3 项每日独立触发的日程：\n- 🌅 **早间 (09:00)**: %s (早间)\n- ☀️ **午间 (13:00)**: %s (午间)\n- 🌙 **晚间 (19:00)**: %s (晚间)\n\n均为每天重复执行 (`FREQ=DAILY`)。您可以点击下方卡片一键添加：\n\n```agenda-action\n%s\n```",
 			cleanTitle, cleanTitle, cleanTitle, cleanTitle, actionJSON), nil
 	}
 
-	// Check if user is asking for summary or listing
-	if strings.Contains(last, "今天") || strings.Contains(last, "安排") || strings.Contains(last, "日程") {
-		return s.GenerateDailyBriefing()
+	// Check if user is asking about overdue items
+	if strings.Contains(last, "逾期") || strings.Contains(last, "超期") || strings.Contains(last, "延期") {
+		var overdue []Reminder
+		for _, r := range reminders {
+			if r.Status == "expired" {
+				overdue = append(overdue, r)
+				continue
+			}
+			if r.Status != "active" {
+				continue
+			}
+			if t, err := parseFlexibleTime(r.ScheduledAt); err == nil && t.Before(now) {
+				overdue = append(overdue, r)
+			}
+		}
+		if len(overdue) == 0 {
+			return "✅ **零逾期记录！**\n\n您当前所有的活跃日程均在计划时间之内，没有任何超期未完结事项。", nil
+		}
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("🚨 **检测到 %d 项已逾期待办事项**：\n\n", len(overdue)))
+		for i, r := range overdue {
+			t, _ := parseFlexibleTime(r.ScheduledAt)
+			b.WriteString(fmt.Sprintf("%d. **%s**（原定 %s · %s）\n", i+1, r.Title, t.In(now.Location()).Format("01-02 15:04"), strings.ToUpper(r.Priority)))
+		}
+		first := overdue[0]
+		b.WriteString(fmt.Sprintf("\n您可以先将最紧急的「**%s**」顺延 30 分钟跟进：\n\n```agenda-action\n{\"action\": \"snooze\", \"id\": %q, \"title\": %q, \"minutes\": 30}\n```", first.Title, first.ID, first.Title))
+		return b.String(), nil
+	}
+
+	// Check if user is asking for optimal free slot
+	if strings.Contains(last, "空闲") || strings.Contains(last, "有空") || strings.Contains(last, "空档") {
+		slotStr, err := s.FindOptimalFreeSlot(now.Format("2006-01-02"), 30)
+		if err == nil {
+			if slotTime, err2 := parseFlexibleTime(slotStr); err2 == nil {
+				localSlot := slotTime.In(now.Location())
+				return fmt.Sprintf("✨ **今日最优空闲时段推荐**\n\n为您扫描了今天（%s）的工作日历，推荐最早的 30 分钟无冲突空闲时段为：**%s**。\n\n如需在此空档安排专注事项，可点击下方卡片一键排期：\n\n```agenda-action\n{\"action\": \"create\", \"title\": \"深度专注块\", \"scheduled_at\": %q, \"duration_minutes\": 30, \"priority\": \"p1\", \"tags\": \"专注\"}\n```",
+					now.Format("2006-01-02"), localSlot.Format("15:04"), localSlot.Format(time.RFC3339)), nil
+			}
+		}
 	}
 
 	if strings.Contains(last, "冲突") || strings.Contains(last, "撞期") {
 		return s.AnalyzeScheduleConflicts()
 	}
 
-	return fmt.Sprintf("收到您的留言：“%s”\n\n💡 *提示：日程管家支持直连 DeepSeek、OpenAI、Ollama 等大模型。若要享受全功能对话与自然语言排期，请在右上角设置中配置 API Key。*\n\n您可以随时使用顶部的命令栏快速添加日程，或输入“今天日程”、“冲突检测”进行智能分析！", last), nil
+	// Check if user is asking for workload overview or urgent P0 tasks
+	lowerLast := strings.ToLower(last)
+	if strings.Contains(last, "负荷") || strings.Contains(last, "统计") || strings.Contains(last, "概览") || strings.Contains(lowerLast, "p0") || strings.Contains(last, "紧急") {
+		var activeCount, p0Count, p1Count, overdueCount, totalMins int
+		var urgentTitles []string
+		for _, r := range reminders {
+			if r.DeletedAt != "" {
+				continue
+			}
+			if r.Status == "expired" {
+				overdueCount++
+				continue
+			}
+			if r.Status != "active" {
+				continue
+			}
+			activeCount++
+			dur := r.DurationMinutes
+			if dur <= 0 {
+				dur = 30
+			}
+			totalMins += dur
+			if r.Priority == "p0" {
+				p0Count++
+				if len(urgentTitles) < 4 {
+					urgentTitles = append(urgentTitles, fmt.Sprintf("- **[P0] %s** (%s)", r.Title, r.ScheduledAt))
+				}
+			} else if r.Priority == "p1" {
+				p1Count++
+			}
+			if t, err := parseFlexibleTime(r.ScheduledAt); err == nil && t.Before(now) {
+				overdueCount++
+			}
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("📊 **当前待办负荷概览**：共 **%d** 项进行中日程（预计总投入 **%d** 分钟），其中 P0 紧急 **%d** 项、P1 重要 **%d** 项、已逾期 **%d** 项。\n", activeCount, totalMins, p0Count, p1Count, overdueCount))
+		if len(urgentTitles) > 0 {
+			sb.WriteString("\n🚨 **优先处理清单 (P0)**：\n" + strings.Join(urgentTitles, "\n"))
+		} else {
+			sb.WriteString("\n✅ 当前没有 P0 级紧急阻塞任务，节奏可控。")
+		}
+		return sb.String(), nil
+	}
+
+	// Check if user is asking for summary or listing
+	if strings.Contains(last, "今天") || strings.Contains(last, "早报") || strings.Contains(last, "总结") || strings.Contains(last, "日程") {
+		return s.GenerateDailyBriefing()
+	}
+
+	// Offline quick creation action card when user asks to add/schedule a task
+	if strings.Contains(last, "提醒我") || strings.Contains(last, "帮我安排") || strings.Contains(last, "帮我添加") || strings.Contains(last, "设个提醒") {
+		clean := last
+		for _, kw := range []string{"提醒我", "帮我安排", "帮我添加", "设个提醒", "请", "一下"} {
+			clean = strings.ReplaceAll(clean, kw, "")
+		}
+		clean = strings.TrimSpace(clean)
+		if clean == "" {
+			clean = "待办事项"
+		}
+		sched := now.Add(30 * time.Minute).Truncate(time.Minute).Format(time.RFC3339)
+		return fmt.Sprintf("好的！已为您生成「**%s**」的快捷排期卡片（默认安排在 30 分钟后，防止创建即过期）：\n\n```agenda-action\n{\"action\": \"create\", \"title\": %q, \"scheduled_at\": %q, \"duration_minutes\": 30, \"priority\": \"p2\"}\n```", clean, clean, sched), nil
+	}
+
+	return fmt.Sprintf("收到您的留言：“%s”\n\n💡 *提示：日程管家支持直连 DeepSeek、OpenAI、Ollama 等大模型。若要享受全功能对话与自然语言排期，请在右上角设置中配置 API Key。*\n\n您可以随时使用顶部的命令栏快速添加日程，或输入“今天日程”、“冲突检测”、“逾期梳理”、“空闲时段”进行智能分析！", last), nil
 }
 
 func (s *AgendaService) PolishReminderWithAI(rawText string) (*PolishResult, error) {
@@ -733,6 +843,29 @@ func (s *AgendaService) PolishReminderWithAI(rawText string) (*PolishResult, err
 	firstLine = strings.TrimPrefix(firstLine, "标题：")
 	firstLine = strings.TrimSpace(firstLine)
 
+	var tags []string
+	seenTags := map[string]bool{}
+	addTag := func(t string) {
+		t = strings.TrimSpace(strings.TrimPrefix(t, "#"))
+		if t != "" && !seenTags[t] {
+			seenTags[t] = true
+			tags = append(tags, t)
+		}
+	}
+
+	// Extract inline #tag tokens from the title line and strip them cleanly
+	var titleTokens []string
+	for _, tok := range strings.Fields(firstLine) {
+		if strings.HasPrefix(tok, "#") && len(tok) > 1 {
+			addTag(tok)
+		} else {
+			titleTokens = append(titleTokens, tok)
+		}
+	}
+	if len(titleTokens) > 0 {
+		firstLine = strings.Join(titleTokens, " ")
+	}
+
 	title := firstLine
 	if len([]rune(title)) > 25 {
 		title = string([]rune(title)[:25]) + "..."
@@ -740,7 +873,6 @@ func (s *AgendaService) PolishReminderWithAI(rawText string) (*PolishResult, err
 
 	var notesLines []string
 	var subtasks []string
-	var tags []string
 
 	for i, l := range lines {
 		l = strings.TrimSpace(l)
@@ -759,16 +891,16 @@ func (s *AgendaService) PolishReminderWithAI(rawText string) (*PolishResult, err
 
 	lower := strings.ToLower(rawText)
 	if strings.Contains(lower, "会") || strings.Contains(lower, "meeting") {
-		tags = append(tags, "会议")
+		addTag("会议")
 	}
 	if strings.Contains(lower, "上线") || strings.Contains(lower, "部署") || strings.Contains(lower, "开发") || strings.Contains(lower, "bug") {
-		tags = append(tags, "技术")
+		addTag("技术")
 	}
 	if strings.Contains(lower, "紧急") || strings.Contains(lower, "限流") || strings.Contains(lower, "止损") {
-		tags = append(tags, "紧急")
+		addTag("紧急")
 	}
 	if len(tags) == 0 {
-		tags = append(tags, "工作")
+		addTag("工作")
 	}
 
 	return &PolishResult{
@@ -779,8 +911,24 @@ func (s *AgendaService) PolishReminderWithAI(rawText string) (*PolishResult, err
 	}, nil
 }
 
+func normalizeOpenAIBaseURL(baseURL string) (string, error) {
+	u := strings.TrimSpace(baseURL)
+	u = strings.TrimRight(u, "/")
+	if strings.HasSuffix(strings.ToLower(u), "/chat/completions") {
+		u = u[:len(u)-len("/chat/completions")]
+		u = strings.TrimRight(u, "/")
+	}
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		return "", fmt.Errorf("无效的接口地址: %s（须以 http:// 或 https:// 开头）", baseURL)
+	}
+	return u + "/chat/completions", nil
+}
+
 func callOpenAICompatible(baseURL, apiKey, model string, messages []AIChatMessage, temp float64) (string, error) {
-	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	url, err := normalizeOpenAIBaseURL(baseURL)
+	if err != nil {
+		return "", err
+	}
 
 	reqBody := openAIChatRequest{
 		Model:       model,
@@ -796,10 +944,11 @@ func callOpenAICompatible(baseURL, apiKey, model string, messages []AIChatMessag
 	client := &http.Client{Timeout: 60 * time.Second}
 	var lastErr error
 
-	// Exponential backoff retry (up to 2 attempts) for transient failures
-	for attempt := 0; attempt < 2; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt*150) * time.Millisecond)
+	// Exponential backoff retry (up to 3 attempts) for transient failures
+	backoff := []time.Duration{0, 200 * time.Millisecond, 500 * time.Millisecond}
+	for attempt := 0; attempt < len(backoff); attempt++ {
+		if backoff[attempt] > 0 {
+			time.Sleep(backoff[attempt])
 		}
 
 		httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
@@ -816,7 +965,7 @@ func callOpenAICompatible(baseURL, apiKey, model string, messages []AIChatMessag
 			continue
 		}
 
-		bodyBytes, err := io.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		resp.Body.Close()
 		if err != nil {
 			lastErr = err

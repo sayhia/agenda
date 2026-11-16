@@ -55,7 +55,7 @@ defineEmits<{
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 550;
-  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 var(--highlight-edge);
   animation: toast-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -81,7 +81,7 @@ defineEmits<{
   margin-left: 3px;
   padding: 1px 4px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--fill-hover);
   font-size: 9px;
   font-family: var(--font-mono);
 }

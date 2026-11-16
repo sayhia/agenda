@@ -5,9 +5,9 @@
 
 function makeTagSwatch(hex: string): { bg: string; text: string; border: string } {
   return {
-    bg: `color-mix(in oklab, ${hex} 14%, transparent)`,
-    text: `color-mix(in oklab, ${hex} 72%, var(--text-primary))`,
-    border: `color-mix(in oklab, ${hex} 30%, transparent)`,
+    bg: `color-mix(in oklab, ${hex} 13%, transparent)`,
+    text: `color-mix(in oklab, ${hex} 78%, var(--text-primary))`,
+    border: `color-mix(in oklab, ${hex} 32%, transparent)`,
   };
 }
 

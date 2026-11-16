@@ -1,51 +1,49 @@
 /**
- * Web Audio API Chime Synthesizer
- * Generates an elegant dual-tone harmonic crystal chime without external audio assets.
+ * Web Audio API Chime & Focus Soundscape Synthesizer
+ * Generates harmonic reminder chimes and delegates focus module audio to focusAudio.ts.
  */
 
-let audioCtx: AudioContext | null = null;
+import {
+  getAudioContext,
+  getSoundProfile,
+  getSoundProfileLabel,
+  getSoundVolume,
+  isSoundPlaybackEnabled,
+  setSoundProfile,
+  setSoundVolume,
+  SOUND_PROFILE_LABELS,
+  type SoundProfile,
+} from './audioCore.ts';
 
-function getAudioContext(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
-  if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (AudioContextClass) {
-      audioCtx = new AudioContextClass();
-    }
-  }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  return audioCtx;
-}
+export {
+  getSoundProfile,
+  getSoundProfileLabel,
+  getSoundVolume,
+  isSoundPlaybackEnabled,
+  setSoundProfile,
+  setSoundVolume,
+  SOUND_PROFILE_LABELS,
+  type SoundProfile,
+};
 
-export type SoundProfile = 'crystal' | 'cyber' | 'zen' | 'droplet';
-
-export function getSoundProfile(): SoundProfile {
-  if (typeof localStorage === 'undefined') return 'crystal';
-  return (localStorage.getItem('agenda_sound_profile') as SoundProfile) || 'crystal';
-}
-
-export function setSoundProfile(profile: SoundProfile): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem('agenda_sound_profile', profile);
-}
-
-export function getSoundVolume(): number {
-  if (typeof localStorage === 'undefined') return 0.28;
-  const raw = localStorage.getItem('agenda_sound_volume');
-  if (raw) {
-    const parsed = parseFloat(raw);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) return parsed;
-  }
-  return 0.28;
-}
-
-export function setSoundVolume(v: number): void {
-  if (typeof localStorage === 'undefined') return;
-  const clamped = Math.max(0, Math.min(1, v));
-  localStorage.setItem('agenda_sound_volume', String(clamped));
-}
+export {
+  AMBIENT_SOUND_OPTIONS,
+  getActiveAmbientSound,
+  isAmbientPreviewActive,
+  playFocusCompleteChime,
+  playFocusDistractionSound,
+  playFocusPauseSound,
+  playFocusStartSound,
+  playFocusTickSound,
+  previewAmbientSound,
+  setAmbientVolume,
+  startAmbientSound,
+  stopAmbientPreviewIfIdle,
+  stopAmbientSound,
+  type AmbientSound,
+  type AmbientSoundMeta,
+  type FocusSoundMode,
+} from './focusAudio.ts';
 
 export function playReminderChime(volume: number = getSoundVolume(), overrideProfile?: SoundProfile): void {
   try {
@@ -106,6 +104,55 @@ export function playReminderChime(volume: number = getSoundVolume(), overridePro
       return;
     }
 
+    if (profile === 'guqin') {
+      // 中国古琴五声音阶（宫商角徵羽：C5, E5, G5, A5）轻拨余韵
+      const pentatonic = [523.25, 659.25, 783.99, 880.0];
+      pentatonic.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const overtone = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startAt = now + idx * 0.11;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startAt);
+        overtone.type = 'sine';
+        overtone.frequency.setValueAtTime(freq * 2, startAt);
+        gain.gain.setValueAtTime(0.001, startAt);
+        gain.gain.exponentialRampToValueAtTime((volume * 0.38) / (1 + idx * 0.25), startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 1.45);
+        osc.connect(gain);
+        overtone.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startAt);
+        overtone.start(startAt);
+        osc.stop(startAt + 1.5);
+        overtone.stop(startAt + 1.5);
+      });
+      return;
+    }
+
+    if (profile === 'qing') {
+      // 山寺古磬清响（G4 基音与双倍泛音慢衰）
+      const partials = [
+        { freq: 392.0, weight: 0.42, decay: 2.1 },
+        { freq: 784.0, weight: 0.16, decay: 1.5 },
+        { freq: 1174.66, weight: 0.08, decay: 1.0 },
+      ];
+      partials.forEach((p) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(p.freq, now);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(volume * p.weight, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + p.decay + 0.05);
+      });
+      return;
+    }
+
     // Default 'crystal': Harmonic Chord (E5 = 659.25Hz, A5 = 880Hz, C#6 = 1108.73Hz)
     const tones = [659.25, 880, 1108.73];
 
@@ -153,105 +200,5 @@ export function playCompleteSound(volume: number = 0.2): void {
     osc.stop(now + 0.25);
   } catch (e) {
     console.warn('Audio playback failed:', e);
-  }
-}
-
-export function playFocusCompleteChime(): void {
-  playReminderChime(0.35, 'crystal');
-}
-
-export type AmbientSound = 'none' | 'rain' | 'alpha' | 'whitenoise';
-
-let ambientSourceNode: AudioNode | null = null;
-let ambientGainNode: GainNode | null = null;
-
-export function stopAmbientSound(): void {
-  try {
-    if (ambientGainNode) {
-      ambientGainNode.gain.linearRampToValueAtTime(0.0001, 0.2);
-    }
-    if (ambientSourceNode) {
-      setTimeout(() => {
-        try {
-          (ambientSourceNode as any)?.stop?.();
-          ambientSourceNode?.disconnect();
-          ambientSourceNode = null;
-          ambientGainNode = null;
-        } catch {}
-      }, 250);
-    }
-  } catch {}
-}
-
-export function startAmbientSound(sound: AmbientSound, volume: number = 0.25): void {
-  stopAmbientSound();
-  if (sound === 'none') return;
-
-  try {
-    const ctx = getAudioContext();
-    if (!ctx) return;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.001, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(Math.max(0.01, Math.min(1, volume)), ctx.currentTime + 0.3);
-    gain.connect(ctx.destination);
-    ambientGainNode = gain;
-
-    if (sound === 'alpha') {
-      // 10Hz Alpha wave focus beat (216Hz + 226Hz)
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      osc1.type = 'sine';
-      osc2.type = 'sine';
-      osc1.frequency.setValueAtTime(216, ctx.currentTime);
-      osc2.frequency.setValueAtTime(226, ctx.currentTime);
-
-      const subGain = ctx.createGain();
-      subGain.gain.setValueAtTime(0.35, ctx.currentTime);
-      osc1.connect(subGain);
-      osc2.connect(subGain);
-      subGain.connect(gain);
-
-      osc1.start();
-      osc2.start();
-      ambientSourceNode = osc1;
-      return;
-    }
-
-    // Procedural noise buffer (Rain / White noise)
-    const bufferSize = ctx.sampleRate * 2;
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-
-    let lastOut = 0.0;
-    for (let i = 0; i < bufferSize; i++) {
-      const white = Math.random() * 2 - 1;
-      if (sound === 'rain') {
-        data[i] = (lastOut + 0.02 * white) / 1.02;
-        lastOut = data[i];
-        data[i] *= 3.5;
-      } else {
-        data[i] = white * 0.15;
-      }
-    }
-
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    noise.loop = true;
-
-    if (sound === 'rain') {
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(800, ctx.currentTime);
-      noise.connect(filter);
-      filter.connect(gain);
-    } else {
-      noise.connect(gain);
-    }
-
-    noise.start();
-    ambientSourceNode = noise;
-  } catch (e) {
-    console.warn('Ambient sound failed:', e);
   }
 }

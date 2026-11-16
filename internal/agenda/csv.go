@@ -138,17 +138,17 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 						headerMap["repeat_rule"] = i
 					case "标签", "tags", "category", "分类", "类别":
 						headerMap["tags"] = i
-					case "持续时间", "持续", "时长", "duration", "duration_minutes":
+					case "持续时间", "持续", "时长", "持续分钟", "持续时长(分)", "duration", "duration_minutes":
 						headerMap["duration"] = i
-					case "提前", "提前提醒", "lead", "lead_minutes":
+					case "提前", "提前提醒", "提前提醒(分)", "lead", "lead_minutes":
 						headerMap["lead"] = i
 					case "时区", "timezone":
 						headerMap["timezone"] = i
 					case "备注", "notes", "description", "detail", "details", "说明", "详情":
 						headerMap["notes"] = i
-					case "子任务", "subtasks", "checklist", "items", "子项":
+					case "子任务", "子任务清单", "subtasks", "checklist", "items", "子项":
 						headerMap["subtasks"] = i
-					case "置顶", "pinned", "is_pinned", "star", "重要度":
+					case "置顶", "是否置顶", "pinned", "is_pinned", "star", "重要度":
 						headerMap["is_pinned"] = i
 					}
 				}
@@ -157,7 +157,7 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 			}
 		}
 
-		title := strings.TrimSpace(record[0])
+		title := ""
 		scheduledAt := ""
 		repeatRule := ""
 		priority := "p2"
@@ -188,11 +188,12 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 			if v := getCol("subtasks"); v != "" { subtasks = v }
 			if v := getCol("is_pinned"); v != "" { isPinned = v == "是" || v == "true" || v == "1" }
 		} else {
+			title = strings.TrimSpace(record[0])
 			// Positional fallback
 			// Detect ID-first column cleanly via header, prefix, or column timestamp position
 			hasIDCol := len(record) >= 3 && seenIDHeader
 			if !hasIDCol && len(record) >= 3 {
-				if strings.HasPrefix(record[0], "rem_") {
+				if strings.HasPrefix(record[0], "rem-") || strings.HasPrefix(record[0], "rem_") {
 					hasIDCol = true
 				} else {
 					_, errCol1 := parseFlexibleTime(record[1])
@@ -242,6 +243,9 @@ func ImportCSV(content string) ([]CreateReminderRequest, error) {
 			durationMinutes = 30
 		}
 		priority = normalizeCSVPriority(priority)
+		if repeatRule == "无" || strings.EqualFold(repeatRule, "none") || repeatRule == "-" {
+			repeatRule = ""
+		}
 		if timezone == "" {
 			timezone = "Asia/Shanghai"
 		}

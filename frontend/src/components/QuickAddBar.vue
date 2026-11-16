@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ParseMultipleRemindersWithAI } from '../../bindings/agenda/internal/agenda/agendaservice';
 import type { CreateReminderRequest } from '../../bindings/agenda/internal/agenda/models';
 import { parseReminderTags } from '../domain/reminder';
@@ -20,9 +20,11 @@ const emit = defineEmits<{
   (e: 'submit', parsed: ParsedReminder, onSuccess: () => void): void;
   (e: 'ai-batch-submit', requests: CreateReminderRequest[], onSuccess: () => void): void;
   (e: 'toast', msg: string, type: 'success' | 'error' | 'info'): void;
+  (e: 'preview-change', preview: { title: string; scheduledAt: string; durationMinutes: number } | null): void;
 }>();
 
 const inputVal = ref('');
+const rootRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const isAiParsing = ref(false);
 const forceAi = ref<boolean | null>(null);
@@ -102,6 +104,7 @@ function handleKeydown(e: KeyboardEvent) {
     }
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       tagSuggestOpen.value = false;
       return;
     }
@@ -112,8 +115,9 @@ function handleKeydown(e: KeyboardEvent) {
     submit();
     return;
   }
-  if (e.key === 'Escape') {
+  if (e.key === 'Escape' && inputVal.value.trim()) {
     e.preventDefault();
+    e.stopPropagation();
     reset();
   }
 }
@@ -138,9 +142,44 @@ function getDefaultLead(): number {
 const effectivePriority = computed(() => priorityOverride.value || parsed.value?.priority || 'p2');
 const effectiveDuration = computed(() => durationOverride.value ?? parsed.value?.durationMinutes ?? 30);
 const effectiveLead = computed(() => parsed.value?.leadSpecified ? parsed.value.leadMinutes : getDefaultLead());
+
+watch(
+  [parsed, effectiveDuration],
+  ([p, dur]) => {
+    if (!p || isAiMode.value) {
+      emit('preview-change', null);
+      return;
+    }
+    emit('preview-change', {
+      title: p.title,
+      scheduledAt: p.scheduledAt,
+      durationMinutes: dur,
+    });
+  },
+  { immediate: true },
+);
 const previewTime = computed(() => {
   if (!parsed.value) return '';
   return `${formatDateLabel(parsed.value.scheduledAt).label} ${formatTime(parsed.value.scheduledAt)}`;
+});
+
+function closeTagSuggest() {
+  tagSuggestOpen.value = false;
+  tagMatchRange.value = null;
+}
+
+function handleOutsidePointerDown(event: PointerEvent) {
+  if (tagSuggestOpen.value && rootRef.value && !rootRef.value.contains(event.target as Node)) {
+    closeTagSuggest();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', handleOutsidePointerDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handleOutsidePointerDown);
 });
 
 function reset() {
@@ -148,6 +187,7 @@ function reset() {
   forceAi.value = null;
   priorityOverride.value = null;
   durationOverride.value = null;
+  closeTagSuggest();
   void nextTick(resizeTextarea);
 }
 
@@ -215,11 +255,26 @@ function resizeTextarea() {
   element.style.height = `${Math.min(element.scrollHeight, 104)}px`;
 }
 
-defineExpose({ focus: () => textareaRef.value?.focus() });
+function focusAndInsert(prefix: string) {
+  inputVal.value = prefix + inputVal.value;
+  void nextTick(() => {
+    resizeTextarea();
+    textareaRef.value?.focus();
+    const len = inputVal.value.length;
+    textareaRef.value?.setSelectionRange(len, len);
+  });
+}
+
+defineExpose({
+  focus: () => textareaRef.value?.focus(),
+  focusAndInsert,
+  clearInput: reset,
+});
 </script>
 
 <template>
   <section
+    ref="rootRef"
     class="quick-add-wrap st-reticle"
     :class="{ 'ai-mode': isAiMode, 'ai-busy': isAiParsing, expanded: inputVal.trim() }"
     aria-label="快速添加日程"
@@ -243,6 +298,7 @@ defineExpose({ focus: () => textareaRef.value?.focus() });
         @click="checkTagAutocomplete"
         @keyup="checkTagAutocomplete"
         @keydown="handleKeydown"
+        @blur="closeTagSuggest"
       ></textarea>
       <button v-if="inputVal" class="composer-clear" type="button" :disabled="busy" title="清空" aria-label="清空" @click="reset">×</button>
 
@@ -290,7 +346,7 @@ defineExpose({ focus: () => textareaRef.value?.focus() });
             '--tag-bg': getTagColor(tag).bg,
             '--tag-text': getTagColor(tag).text,
           }"
-          @click="insertTag(tag)"
+          @mousedown.prevent="insertTag(tag)"
           @mouseenter="tagSuggestIndex = idx"
         >
           <span class="tag-hash">#</span>
@@ -340,7 +396,7 @@ defineExpose({ focus: () => textareaRef.value?.focus() });
 <style scoped>
 .quick-add-wrap {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   background:
@@ -364,9 +420,10 @@ defineExpose({ focus: () => textareaRef.value?.focus() });
 .skein-beam-rail {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 12px;
+  right: 12px;
   height: 2px;
+  border-radius: 999px;
   background: linear-gradient(90deg, transparent, var(--tide), var(--lime), var(--tide), transparent);
   background-size: 200% 100%;
   animation: skein-flow 3.2s linear infinite;
@@ -462,7 +519,7 @@ textarea::placeholder { color: var(--text-quaternary); }
 .composer-submit:hover:not(:disabled) {
   background: var(--cta-bg-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), 0 0 14px var(--accent-soft);
+  box-shadow: var(--cta-shadow), 0 0 14px var(--accent-soft);
 }
 .composer-submit:disabled { opacity: 0.35; cursor: default; }
 .composer-submit kbd { opacity: 0.58; font-size: 10px; }
@@ -511,11 +568,13 @@ textarea::placeholder { color: var(--text-quaternary); }
   left: 48px;
   z-index: 50;
   min-width: 190px;
-  max-width: 280px;
+  max-width: min(280px, calc(100vw - 64px));
+  max-height: min(260px, 42vh);
+  overflow-y: auto;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-raised, #161a22);
-  box-shadow: 0 10px 28px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: var(--surface-overlay, #161a22);
+  box-shadow: var(--shadow-lg, 0 10px 28px -6px rgba(0, 0, 0, 0.55));
   backdrop-filter: blur(16px);
   padding: 6px;
   animation: popover-in 140ms cubic-bezier(0.16, 1, 0.3, 1);

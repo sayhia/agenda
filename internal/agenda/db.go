@@ -25,7 +25,7 @@ type Reminder struct {
 	DurationMinutes int    `json:"duration_minutes"`
 	Timezone        string `json:"timezone"`
 	Prompt          string `json:"prompt"`
-	Status          string `json:"status"` // "active", "paused", "ended"
+	Status          string `json:"status"` // "active", "paused", "ended", "expired"
 	Priority        string `json:"priority"` // "p0", "p1", "p2", "p3"
 	Tags            string `json:"tags"`     // comma separated, e.g. "工作,限流"
 	Subtasks        string `json:"subtasks"` // JSON string of subtasks array
@@ -59,6 +59,16 @@ type DeliveryRecord struct {
 	Error       string `json:"error"`
 }
 
+type RecentDeliveryItem struct {
+	ID            string `json:"id"`
+	ReminderID    string `json:"reminder_id"`
+	ReminderTitle string `json:"reminder_title"`
+	DeliveredAt   string `json:"delivered_at"`
+	Prompt        string `json:"prompt"`
+	Status        string `json:"status"`
+	Error         string `json:"error"`
+}
+
 type Stats struct {
 	TotalReminders   int `json:"total_reminders"`
 	ActiveReminders  int `json:"active_reminders"`
@@ -66,6 +76,7 @@ type Stats struct {
 	NearDueReminders int `json:"near_due_reminders"`
 	PausedReminders  int `json:"paused_reminders"`
 	EndedReminders   int `json:"ended_reminders"`
+	ExpiredReminders int `json:"expired_reminders"`
 	TotalDelivered   int `json:"total_delivered"`
 }
 
@@ -373,6 +384,17 @@ func (d *DB) GetAllReminders() ([]Reminder, error) {
 	if list == nil {
 		list = []Reminder{}
 	}
+	sort.SliceStable(list, func(i, j int) bool {
+		if list[i].IsPinned != list[j].IsPinned {
+			return list[i].IsPinned
+		}
+		ti, err1 := parseFlexibleTime(list[i].ScheduledAt)
+		tj, err2 := parseFlexibleTime(list[j].ScheduledAt)
+		if err1 == nil && err2 == nil {
+			return ti.Before(tj)
+		}
+		return list[i].ScheduledAt < list[j].ScheduledAt
+	})
 	return list, nil
 }
 
@@ -471,6 +493,11 @@ func (d *DB) UpdateReminder(req UpdateReminderRequest) (*Reminder, error) {
 		pinnedVal = 1
 	}
 
+	var createdAt, prevStatus string
+	if err := d.db.QueryRow("SELECT created_at, status FROM reminders WHERE id = ?", req.ID).Scan(&createdAt, &prevStatus); err != nil {
+		return nil, fmt.Errorf("日程不存在: %w", err)
+	}
+
 	_, err := d.db.Exec(`
 		UPDATE reminders SET
 			title = ?, scheduled_at = ?, repeat_rule = ?, lead_minutes = ?, notes = ?,
@@ -484,12 +511,17 @@ func (d *DB) UpdateReminder(req UpdateReminderRequest) (*Reminder, error) {
 		return nil, err
 	}
 
-	if status == "ended" {
+	if status == "ended" && prevStatus != "ended" {
 		_, _ = d.db.Exec(`
 			INSERT INTO delivery_records (id, reminder_id, delivered_at, prompt, status, error)
 			VALUES (?, ?, ?, ?, ?, ?)
 		`, generateID("rec"), req.ID, now, "事项标记完结", "completed", "")
-	} else if status == "paused" {
+	} else if status == "expired" && prevStatus != "expired" {
+		_, _ = d.db.Exec(`
+			INSERT INTO delivery_records (id, reminder_id, delivered_at, prompt, status, error)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, generateID("rec"), req.ID, now, "事项已过期", "expired", "")
+	} else if status == "paused" && prevStatus != "paused" {
 		_, _ = d.db.Exec(`
 			INSERT INTO delivery_records (id, reminder_id, delivered_at, prompt, status, error)
 			VALUES (?, ?, ?, ?, ?, ?)
@@ -510,6 +542,8 @@ func (d *DB) UpdateReminder(req UpdateReminderRequest) (*Reminder, error) {
 		Priority:        priority,
 		Tags:            req.Tags,
 		Subtasks:        req.Subtasks,
+		IsPinned:        req.IsPinned,
+		CreatedAt:       createdAt,
 		UpdatedAt:       now,
 	}, nil
 }
@@ -610,7 +644,16 @@ func (d *DB) GetTrashReminders() ([]Reminder, error) {
 	return list, nil
 }
 
-func (d *DB) BatchDelete(ids []string) error {
+// batchUpdateColumn updates a single column plus updated_at across multiple reminder IDs in one transaction.
+func (d *DB) batchUpdateColumn(ids []string, column string, value any) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	switch column {
+	case "status", "priority", "deleted_at", "is_pinned", "subtasks":
+	default:
+		return fmt.Errorf("unsupported batch update column: %s", column)
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -621,18 +664,26 @@ func (d *DB) BatchDelete(ids []string) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("UPDATE reminders SET deleted_at = ?, updated_at = ? WHERE id = ?")
+	stmt, err := tx.Prepare(fmt.Sprintf("UPDATE reminders SET %s = ?, updated_at = ? WHERE id = ?", column))
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, id := range ids {
-		if _, err := stmt.Exec(now, now, id); err != nil {
+		if _, err := stmt.Exec(value, now, id); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+func (d *DB) BatchDelete(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now().Format(time.RFC3339)
+	return d.batchUpdateColumn(ids, "deleted_at", now)
 }
 
 func (d *DB) OptimizeDatabase() (string, error) {
@@ -659,53 +710,11 @@ func (d *DB) OptimizeDatabase() (string, error) {
 }
 
 func (d *DB) BatchSetStatus(ids []string, status string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	now := time.Now().Format(time.RFC3339)
-	tx, err := d.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("UPDATE reminders SET status = ?, updated_at = ? WHERE id = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, id := range ids {
-		if _, err := stmt.Exec(status, now, id); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return d.batchUpdateColumn(ids, "status", status)
 }
 
 func (d *DB) BatchSetPriority(ids []string, priority string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	now := time.Now().Format(time.RFC3339)
-	tx, err := d.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("UPDATE reminders SET priority = ?, updated_at = ? WHERE id = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, id := range ids {
-		if _, err := stmt.Exec(priority, now, id); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return d.batchUpdateColumn(ids, "priority", priority)
 }
 
 func (d *DB) ArchiveOldEndedReminders(days int) (int, error) {
@@ -716,7 +725,7 @@ func (d *DB) ArchiveOldEndedReminders(days int) (int, error) {
 		days = 30
 	}
 	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
-	res, err := d.db.Exec("DELETE FROM reminders WHERE status = 'ended' AND updated_at < ?", cutoff)
+	res, err := d.db.Exec("DELETE FROM reminders WHERE status IN ('ended', 'expired') AND updated_at < ?", cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -778,31 +787,76 @@ func (d *DB) GetDeliveryHistory(reminderID string) ([]DeliveryRecord, error) {
 	return list, nil
 }
 
+func (d *DB) GetRecentDeliveries(limit int) ([]RecentDeliveryItem, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	if limit <= 0 || limit > 100 {
+		limit = 15
+	}
+	rows, err := d.db.Query(`
+		SELECT dr.id, dr.reminder_id, COALESCE(r.title, ''), dr.delivered_at, dr.prompt, dr.status, dr.error
+		FROM delivery_records dr
+		LEFT JOIN reminders r ON dr.reminder_id = r.id
+		ORDER BY dr.delivered_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []RecentDeliveryItem
+	for rows.Next() {
+		var item RecentDeliveryItem
+		if err := rows.Scan(&item.ID, &item.ReminderID, &item.ReminderTitle, &item.DeliveredAt, &item.Prompt, &item.Status, &item.Error); err != nil {
+			return nil, err
+		}
+		list = append(list, item)
+	}
+	if list == nil {
+		list = []RecentDeliveryItem{}
+	}
+	return list, nil
+}
+
 func (d *DB) GetStats() (*Stats, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
 	var stats Stats
-	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders").Scan(&stats.TotalReminders)
-	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'active'").Scan(&stats.ActiveReminders)
-	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'paused'").Scan(&stats.PausedReminders)
-	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'ended'").Scan(&stats.EndedReminders)
+	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE COALESCE(deleted_at, '') = ''").Scan(&stats.TotalReminders)
+	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'active' AND COALESCE(deleted_at, '') = ''").Scan(&stats.ActiveReminders)
+	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'paused' AND COALESCE(deleted_at, '') = ''").Scan(&stats.PausedReminders)
+	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'ended' AND COALESCE(deleted_at, '') = ''").Scan(&stats.EndedReminders)
+	_ = d.db.QueryRow("SELECT COUNT(*) FROM reminders WHERE status = 'expired' AND COALESCE(deleted_at, '') = ''").Scan(&stats.ExpiredReminders)
 	_ = d.db.QueryRow("SELECT COUNT(*) FROM delivery_records").Scan(&stats.TotalDelivered)
 
 	now := time.Now()
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Format(time.RFC3339)
-	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location()).Format(time.RFC3339)
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
+	nearLimit := now.Add(15 * time.Minute)
 
-	_ = d.db.QueryRow(`
-		SELECT COUNT(*) FROM reminders
-		WHERE status = 'active' AND scheduled_at >= ? AND scheduled_at <= ?
-	`, todayStart, todayEnd).Scan(&stats.TodayReminders)
-
-	nearLimit := now.Add(15 * time.Minute).Format(time.RFC3339)
-	_ = d.db.QueryRow(`
-		SELECT COUNT(*) FROM reminders
-		WHERE status = 'active' AND scheduled_at >= ? AND scheduled_at <= ?
-	`, now.Format(time.RFC3339), nearLimit).Scan(&stats.NearDueReminders)
+	rows, err := d.db.Query(`
+		SELECT scheduled_at FROM reminders
+		WHERE status = 'active' AND COALESCE(deleted_at, '') = ''
+	`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var schedStr string
+			if err := rows.Scan(&schedStr); err == nil {
+				if t, err := parseFlexibleTime(schedStr); err == nil {
+					if !t.Before(todayStart) && !t.After(todayEnd) {
+						stats.TodayReminders++
+					}
+					if !t.Before(now) && !t.After(nearLimit) {
+						stats.NearDueReminders++
+					}
+				}
+			}
+		}
+	}
 
 	return &stats, nil
 }
@@ -922,19 +976,27 @@ func (d *DB) RestoreDatabase(backupPath string) error {
 		return fmt.Errorf("invalid db path")
 	}
 
-	// Verify backup file exists
+	// Verify backup file exists and is a valid SQLite 3 database header before closing current DB
 	if _, err := os.Stat(backupPath); err != nil {
 		return fmt.Errorf("backup file not found: %w", err)
 	}
-
-	// Close current db handle
-	_ = d.db.Close()
-
 	src, err := os.Open(backupPath)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
+	header := make([]byte, 16)
+	if n, err := io.ReadFull(src, header); err != nil || n < 16 || string(header) != "SQLite format 3\x00" {
+		return fmt.Errorf("invalid sqlite backup file")
+	}
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	// Close current db handle and remove stale WAL/SHM sidecar files before overwriting
+	_ = d.db.Close()
+	_ = os.Remove(d.dbPath + "-wal")
+	_ = os.Remove(d.dbPath + "-shm")
 
 	dest, err := os.Create(d.dbPath)
 	if err != nil {
@@ -945,6 +1007,7 @@ func (d *DB) RestoreDatabase(backupPath string) error {
 	if _, err := io.Copy(dest, src); err != nil {
 		return err
 	}
+	_ = dest.Sync()
 
 	// Reopen sqlite connection with WAL pragmas
 	newDB, err := sql.Open("sqlite", d.dbPath)
@@ -955,6 +1018,9 @@ func (d *DB) RestoreDatabase(backupPath string) error {
 		"PRAGMA journal_mode = WAL;",
 		"PRAGMA busy_timeout = 5000;",
 		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA cache_size = -20000;",
+		"PRAGMA temp_store = MEMORY;",
+		"PRAGMA foreign_keys = ON;",
 	}
 	for _, p := range pragmas {
 		_, _ = newDB.Exec(p)
@@ -1050,42 +1116,20 @@ func (d *DB) TogglePinReminder(id string) (*Reminder, error) {
 }
 
 func (d *DB) BatchSetPinned(ids []string, pinned bool) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	val := 0
 	if pinned {
 		val = 1
 	}
-	now := time.Now().Format(time.RFC3339)
-	tx, err := d.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("UPDATE reminders SET is_pinned = ?, updated_at = ? WHERE id = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, id := range ids {
-		if _, err := stmt.Exec(val, now, id); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return d.batchUpdateColumn(ids, "is_pinned", val)
 }
 
 func (d *DB) BatchAddTag(ids []string, tag string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	tag = strings.TrimSpace(tag)
-	if tag == "" {
+	if len(ids) == 0 || tag == "" {
 		return nil
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	now := time.Now().Format(time.RFC3339)
 	tx, err := d.db.Begin()
@@ -1144,8 +1188,12 @@ func (d *DB) SaveAIChatMessage(id, role, content, actionsJSON string) error {
 	}
 
 	_, err := d.db.Exec(`
-		INSERT OR REPLACE INTO ai_chat_messages (id, role, content, actions_json, created_at)
+		INSERT INTO ai_chat_messages (id, role, content, actions_json, created_at)
 		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			role = excluded.role,
+			content = excluded.content,
+			actions_json = excluded.actions_json
 	`, id, role, content, actionsJSON, now)
 	return err
 }
@@ -1155,10 +1203,13 @@ func (d *DB) GetAIChatHistory() ([]AIChatRecord, error) {
 	defer d.mu.RUnlock()
 
 	rows, err := d.db.Query(`
-		SELECT id, role, content, COALESCE(actions_json, ''), created_at
-		FROM ai_chat_messages
-		ORDER BY created_at ASC
-		LIMIT 100
+		SELECT id, role, content, actions_json, created_at FROM (
+			SELECT id, role, content, COALESCE(actions_json, '') AS actions_json, created_at, rowid
+			FROM ai_chat_messages
+			ORDER BY created_at DESC, rowid DESC
+			LIMIT 100
+		)
+		ORDER BY created_at ASC, rowid ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -1190,15 +1241,15 @@ func (d *DB) GetOverdueReminders() ([]Reminder, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now()
 	rows, err := d.db.Query(`
 		SELECT id, title, scheduled_at, repeat_rule, lead_minutes, notes, duration_minutes,
 		       timezone, prompt, status, COALESCE(priority, 'p2'), COALESCE(tags, ''), COALESCE(subtasks, ''),
 		       COALESCE(deleted_at, ''), COALESCE(is_pinned, 0), created_at, updated_at
 		FROM reminders
-		WHERE status = 'active' AND scheduled_at < ? AND (deleted_at IS NULL OR deleted_at = '')
+		WHERE status IN ('active', 'expired') AND (deleted_at IS NULL OR deleted_at = '')
 		ORDER BY scheduled_at ASC
-	`, now)
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -1214,13 +1265,29 @@ func (d *DB) GetOverdueReminders() ([]Reminder, error) {
 			&r.DeletedAt, &pinnedInt, &r.CreatedAt, &r.UpdatedAt,
 		)
 		if err == nil {
-			r.IsPinned = (pinnedInt == 1)
-			list = append(list, r)
+			if r.Status == "expired" {
+				r.IsPinned = (pinnedInt == 1)
+				list = append(list, r)
+			} else if t, parseErr := parseFlexibleTime(r.ScheduledAt); parseErr == nil && t.Before(now) {
+				r.IsPinned = (pinnedInt == 1)
+				list = append(list, r)
+			}
 		}
 	}
 	if list == nil {
 		list = []Reminder{}
 	}
+	sort.SliceStable(list, func(i, j int) bool {
+		if list[i].IsPinned != list[j].IsPinned {
+			return list[i].IsPinned
+		}
+		ti, err1 := parseFlexibleTime(list[i].ScheduledAt)
+		tj, err2 := parseFlexibleTime(list[j].ScheduledAt)
+		if err1 == nil && err2 == nil {
+			return ti.Before(tj)
+		}
+		return list[i].ScheduledAt < list[j].ScheduledAt
+	})
 	return list, nil
 }
 
@@ -1251,28 +1318,7 @@ func (d *DB) GetTagsSummary() (map[string]int, error) {
 }
 
 func (d *DB) BatchSetSubtasks(ids []string, subtasks string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	now := time.Now().Format(time.RFC3339)
-	tx, err := d.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("UPDATE reminders SET subtasks = ?, updated_at = ? WHERE id = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, id := range ids {
-		if _, err := stmt.Exec(subtasks, now, id); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return d.batchUpdateColumn(ids, "subtasks", subtasks)
 }
 
 func (d *DB) Vacuum() error {

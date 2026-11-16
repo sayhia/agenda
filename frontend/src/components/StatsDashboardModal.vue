@@ -3,6 +3,10 @@ import { ref, computed, watch } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { GetDatabaseStats, VacuumDatabase } from '../../bindings/agenda/internal/agenda/agendaservice';
 import { handlePointerGlow, resetPointerGlow } from '../utils/pointerGlow';
+import { getApproxSolarTerm, getChineseShichen } from '../utils/shanshui';
+import { formatMinutesCompact, exportFocusHistoryMarkdown } from '../utils/focus';
+import { focusBreakdown, focusEngineState, refreshFocusStats } from '../utils/focusEngine';
+import { triggerFileDownload } from '../utils/export';
 
 const props = defineProps<{
   visible: boolean;
@@ -38,7 +42,26 @@ async function handleVacuum() {
 }
 
 watch(() => props.visible, (v) => {
-  if (v) loadDbStats();
+  if (v) {
+    loadDbStats();
+    refreshFocusStats();
+  }
+});
+
+const focusStats = computed(() => focusEngineState.stats);
+
+function handleExportFocusReport() {
+  const md = exportFocusHistoryMarkdown();
+  triggerFileDownload(md, `agenda-focus-report-${new Date().toISOString().slice(0, 10)}.md`, 'text/markdown;charset=utf-8');
+}
+
+const statsMoment = computed(() => {
+  props.visible;
+  const now = new Date();
+  return {
+    solar: getApproxSolarTerm(now),
+    shichen: getChineseShichen(now),
+  };
 });
 
 const total = computed(() => props.reminders.length);
@@ -128,18 +151,29 @@ const peakHours = computed(() => {
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-card st-reticle" role="dialog" aria-modal="true" aria-label="数据看板">
-      <!-- Head -->
-      <div class="modal-head">
-        <div class="head-title-row">
-          <span class="telemetry-eyebrow">COMMERCE TELEMETRY</span>
-          <h3 class="modal-title">生产力与时间洞察看板</h3>
+  <Transition name="modal-fade">
+    <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+      <div class="modal-card st-reticle" role="dialog" aria-modal="true" aria-label="数据看板">
+        <!-- Head -->
+        <div class="modal-head">
+          <div class="head-title-row">
+            <span class="telemetry-eyebrow">COMMERCE TELEMETRY</span>
+            <h3 class="modal-title">生产力与时间洞察看板</h3>
+            <p class="stats-shanshui-line">
+              <span class="shanshui-seal">{{ statsMoment.solar.sealChar }}</span>
+              <span>{{ statsMoment.solar.name }} · {{ statsMoment.shichen.branch }}时{{ statsMoment.shichen.alias }} · {{ statsMoment.solar.verse }}</span>
+            </p>
+          </div>
+          <button class="modal-close-btn" title="关闭" aria-label="关闭" @click="$emit('close')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
-        <button class="icon-btn" title="关闭" @click="$emit('close')">✕</button>
-      </div>
 
-      <!-- Overview 4 KPI cards (Scrolltide Dark Wallet / Commerce Analytics) -->
+        <div class="stats-body">
+          <!-- Overview 4 KPI cards (Scrolltide Dark Wallet / Commerce Analytics) -->
       <div class="kpi-grid">
         <div class="kpi-box st-reticle" @pointermove="handlePointerGlow" @pointerleave="resetPointerGlow">
           <div class="kpi-index">01 · TOTAL</div>
@@ -187,6 +221,56 @@ const peakHours = computed(() => {
           <div class="heatmap-cell level-2"></div>
           <div class="heatmap-cell level-3"></div>
           <span>PEAK</span>
+        </div>
+      </div>
+
+      <!-- Focus Pomodoro Telemetry -->
+      <div class="section-card focus-stats-card">
+        <div class="section-head-row">
+          <span class="section-title">番茄专注效能与 7 日心流趋势</span>
+          <div style="display: inline-flex; align-items: center; gap: 8px;">
+            <span class="section-tag">
+              连续 {{ focusStats.streakDays }} 天 · 零分心率 {{ focusBreakdown.zeroDistractionPercent }}%
+            </span>
+            <button type="button" class="vacuum-btn" style="height: 22px; font-size: 10px; padding: 0 9px;" @click="handleExportFocusReport">
+              导出专注周报 (.md)
+            </button>
+          </div>
+        </div>
+        <div class="focus-kpi-strip">
+          <div class="focus-kpi-pill">
+            <span>今日专注</span>
+            <strong class="tabular-nums">{{ formatMinutesCompact(focusStats.todayMinutes) }} / {{ formatMinutesCompact(focusStats.dailyGoalMinutes) }}</strong>
+          </div>
+          <div class="focus-kpi-pill">
+            <span>今日轮数</span>
+            <strong class="tabular-nums">{{ focusStats.todaySessions }} 轮</strong>
+          </div>
+          <div class="focus-kpi-pill">
+            <span>累计专注</span>
+            <strong class="tabular-nums">{{ formatMinutesCompact(focusStats.totalMinutes) }}（{{ focusStats.totalSessions }} 轮）</strong>
+          </div>
+          <div class="focus-kpi-pill">
+            <span>连续坚持</span>
+            <strong class="tabular-nums">{{ focusStats.streakDays }} 天</strong>
+          </div>
+        </div>
+        <div class="focus-goal-bar">
+          <div class="focus-goal-fill" :style="{ width: focusStats.goalPercent + '%' }"></div>
+        </div>
+        <div class="focus-week-bars" aria-label="近 7 天专注分钟数">
+          <div
+            v-for="day in focusStats.weeklyTrend"
+            :key="day.dateKey"
+            class="week-bar-col"
+            :title="`${day.dateKey}: ${day.minutes} 分钟 (${day.sessions} 轮)`"
+          >
+            <div class="week-bar-track">
+              <div class="week-bar-fill" :style="{ height: day.percent + '%' }"></div>
+            </div>
+            <span class="week-bar-label">{{ day.label }}</span>
+            <span class="week-bar-val tabular-nums">{{ day.minutes > 0 ? day.minutes + 'm' : '—' }}</span>
+          </div>
         </div>
       </div>
 
@@ -260,6 +344,10 @@ const peakHours = computed(() => {
             <span class="db-metric-label">已逾期待办</span>
             <span class="db-metric-val tabular-nums" :class="{ 'warn-text': dbStats.overdue > 0 }">{{ dbStats.overdue }} 项</span>
           </div>
+          <div v-if="dbStats.trash_count !== undefined" class="db-metric">
+            <span class="db-metric-label">废纸篓缓存</span>
+            <span class="db-metric-val tabular-nums">{{ dbStats.trash_count }} 项</span>
+          </div>
           <button
             class="vacuum-btn"
             :disabled="isVacuuming"
@@ -270,37 +358,41 @@ const peakHours = computed(() => {
         </div>
       </div>
 
-      <!-- Footer -->
-      <div class="modal-footer">
-        <button class="primary-btn" @click="$emit('close')">完成阅览</button>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer">
+          <span class="footer-meta tabular-nums">已归档 {{ completedCount }} / {{ total }} 项日程</span>
+          <button class="primary-btn" @click="$emit('close')">完成阅览</button>
+        </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(3, 5, 8, 0.72);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 120;
+  z-index: var(--z-overlay);
 }
 
 .modal-card {
   position: relative;
-  width: 660px;
+  width: 670px;
   max-width: 92vw;
-  max-height: 86vh;
+  max-height: min(86vh, 720px);
   border-radius: 18px;
-  padding: 22px 26px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
+  overflow: hidden;
   background:
     radial-gradient(65% 45% at 15% 0%, color-mix(in srgb, var(--lime) 7%, transparent), transparent 65%),
     radial-gradient(65% 45% at 90% 0%, color-mix(in srgb, var(--tide) 10%, transparent), transparent 65%),
@@ -310,11 +402,22 @@ const peakHours = computed(() => {
 }
 
 .modal-head {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.stats-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .head-title-row {
@@ -466,6 +569,23 @@ const peakHours = computed(() => {
 }
 .heatmap-cell.level-3 .cell-tip { color: var(--ink-on-lime); opacity: 0.95; font-weight: 700; }
 
+:global([data-color-scheme="light"]) .heatmap-cell.level-2 {
+  background: color-mix(in srgb, var(--tide) 44%, transparent);
+}
+:global([data-color-scheme="light"]) .heatmap-cell.level-2 .cell-tip {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.stats-shanshui-line {
+  margin: 2px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
 .heatmap-legend {
   display: flex;
   align-items: center;
@@ -586,9 +706,18 @@ const peakHours = computed(() => {
 }
 
 .modal-footer {
+  flex: none;
   display: flex;
-  justify-content: flex-end;
-  padding-top: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.footer-meta {
+  font: 600 10.5px var(--font-mono);
+  color: var(--text-tertiary);
 }
 
 .db-health-card { gap: 10px; }
@@ -674,5 +803,92 @@ const peakHours = computed(() => {
 .vacuum-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.focus-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.focus-kpi-pill {
+  background: var(--fill-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.focus-kpi-pill span {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.focus-kpi-pill strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.focus-goal-bar {
+  width: 100%;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--fill-subtle);
+  overflow: hidden;
+}
+
+.focus-goal-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--tide), var(--success));
+  transition: width 0.3s ease;
+}
+
+.focus-week-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  padding-top: 4px;
+}
+
+.week-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.week-bar-track {
+  width: 100%;
+  max-width: 28px;
+  height: 52px;
+  border-radius: 6px;
+  background: var(--fill-subtle);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.week-bar-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--tide);
+  transition: height 0.25s ease;
+}
+
+.week-bar-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.week-bar-val {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-secondary);
 }
 </style>

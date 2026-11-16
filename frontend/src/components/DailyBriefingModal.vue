@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { formatTime } from '../utils/format';
+import { getApproxSolarTerm, getDailyShanshuiProverb } from '../utils/shanshui';
 
 const props = defineProps<{
   visible: boolean;
@@ -37,12 +38,23 @@ const todayReminders = computed(() => {
 
 const p0Count = computed(() => todayReminders.value.filter((r) => r.priority === 'p0').length);
 const p1Count = computed(() => todayReminders.value.filter((r) => r.priority === 'p1').length);
+const todayTotalMinutes = computed(() =>
+  todayReminders.value.reduce((sum, r) => sum + (r.duration_minutes > 0 ? r.duration_minutes : 30), 0)
+);
+const overdueCount = computed(() => {
+  const startOfToday = new Date(now.value.getFullYear(), now.value.getMonth(), now.value.getDate(), 0, 0, 0, 0).getTime();
+  return props.reminders.filter(
+    (r) => r.status === 'expired' || (r.status === 'active' && new Date(r.scheduled_at).getTime() < startOfToday),
+  ).length;
+});
 
 const isCopied = ref(false);
+const dailySolarTerm = computed(() => getApproxSolarTerm(now.value));
+const dailyProverb = computed(() => getDailyShanshuiProverb(now.value));
 
 async function copyBriefing() {
-  let text = `📅 【日程管家 · 今日早报】\n${todayStr.value}\n\n`;
-  text += `⚡️ 今日待办：共 ${todayReminders.value.length} 项 (高优事项: ${p0Count.value + p1Count.value})\n`;
+  let text = `📅 【日程管家 · 今日早报】\n${todayStr.value} · ${dailySolarTerm.value.name}\n\n`;
+  text += `⚡️ 今日待办：共 ${todayReminders.value.length} 项 (预计 ${todayTotalMinutes.value} 分钟 · 高优事项: ${p0Count.value + p1Count.value}${overdueCount.value > 0 ? ` · 历史逾期: ${overdueCount.value}` : ''})\n`;
   text += `─────────────────────\n`;
 
   if (todayReminders.value.length === 0) {
@@ -57,7 +69,7 @@ async function copyBriefing() {
       }
     }
   }
-  text += `\n✨ 今日寄语：保持专注，步履不停！`;
+  text += `\n✨ 今日寄语：「${dailyProverb.value.text}」（${dailyProverb.value.source}）`;
 
   try {
     await navigator.clipboard.writeText(text);
@@ -90,8 +102,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="briefing-card glass-panel st-reticle" role="dialog" aria-modal="true" aria-label="每日简报">
+  <Transition name="modal-fade">
+    <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+      <div class="briefing-card glass-panel st-reticle" role="dialog" aria-modal="true" aria-label="每日简报">
       <!-- Receipt Printer Metallic Slot Header -->
       <div class="printer-slot-bar">
         <div class="slot-leds" aria-hidden="true">
@@ -100,7 +113,12 @@ onUnmounted(() => {
           <span class="led"></span>
         </div>
         <span class="slot-label">RECEIPT PRINTER · DISPATCH SLOT</span>
-        <button class="icon-btn" title="关闭" @click="$emit('close')">✕</button>
+        <button class="modal-close-btn" title="关闭" aria-label="关闭" @click="$emit('close')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <!-- Perforated Thermal Sheet -->
@@ -110,21 +128,39 @@ onUnmounted(() => {
         <!-- Hero Header -->
         <div class="hero-block">
           <div class="hero-meta-row">
-            <span class="date-badge">{{ todayStr }}</span>
-            <span class="receipt-serial">NO.{{ String(todayReminders.length).padStart(2, '0') }}-DISPATCH</span>
+            <span class="date-badge">{{ todayStr }} · {{ dailySolarTerm.name }}</span>
+            <span class="hero-serial-group">
+              <span class="shanshui-seal" title="日知雅集印">日知</span>
+              <span class="receipt-serial">NO.{{ String(todayReminders.length).padStart(2, '0') }}-DISPATCH</span>
+            </span>
           </div>
-          <h2 class="hero-title">今日日程规划早报</h2>
+          <h2 class="hero-title" :title="`${dailyProverb.text} —— ${dailyProverb.source}`">今日日程规划早报</h2>
           <div class="ledger-strip tabular-nums">
-            <span><strong>{{ todayReminders.length }}</strong><small>PENDING</small></span>
+            <span><strong>{{ todayReminders.length }}</strong><small>PENDING ({{ todayTotalMinutes }}M)</small></span>
             <span><strong class="crit">{{ p0Count }}</strong><small>P0 CRIT</small></span>
             <span><strong class="high">{{ p1Count }}</strong><small>P1 HIGH</small></span>
+            <span v-if="overdueCount > 0"><strong class="crit">{{ overdueCount }}</strong><small>OVERDUE</small></span>
           </div>
+          <p v-if="overdueCount > 0" class="overdue-note st-inline-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>有 {{ overdueCount }} 项历史逾期未完结，建议优先顺延或收口</span>
+          </p>
         </div>
 
         <!-- Task Timeline Ledger -->
         <div class="timeline-container">
           <div v-if="todayReminders.length === 0" class="empty-state">
-            <span class="empty-icon">—</span>
+            <span class="empty-icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="9" y1="14" x2="15" y2="14" />
+              </svg>
+            </span>
             <p>今日暂无排期任务，保持专注节律</p>
           </div>
 
@@ -158,49 +194,63 @@ onUnmounted(() => {
 
       <!-- Footer Actions -->
       <div class="card-foot">
-        <button class="action-btn print-btn" @click="handlePrint">
-          打印 / 保存 PDF
+        <button class="action-btn print-btn st-inline-icon" @click="handlePrint">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          <span>打印 / 保存 PDF</span>
         </button>
-        <button class="action-btn copy-btn" @click="copyBriefing">
-          {{ isCopied ? '已复制 ✓' : '复制早报清单' }}
+        <button class="action-btn copy-btn st-inline-icon" @click="copyBriefing">
+          <svg v-if="isCopied" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          <span>{{ isCopied ? '已复制' : '复制早报清单' }}</span>
         </button>
       </div>
+      </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(3, 5, 8, 0.72);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 150;
+  z-index: var(--z-overlay);
 }
 
 .briefing-card {
   position: relative;
   width: 560px;
   max-width: 92vw;
-  max-height: 88vh;
+  max-height: min(86vh, 720px);
   border-radius: 18px;
-  padding: 18px 22px 20px;
+  padding: 18px 22px 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   background:
     radial-gradient(75% 45% at 50% 0%, color-mix(in srgb, var(--tide) 10%, transparent), transparent 68%),
     var(--surface-raised);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-lg);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .printer-slot-bar {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -237,10 +287,13 @@ onUnmounted(() => {
 
 .receipt-sheet {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: var(--surface);
-  padding: 16px 16px 12px;
+  padding: 16px 16px 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -285,6 +338,12 @@ onUnmounted(() => {
 .date-badge {
   font: 700 10.5px var(--font-mono);
   color: var(--tide-text);
+}
+
+.hero-serial-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .receipt-serial {
@@ -335,9 +394,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 340px;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 
 .briefing-item {
@@ -448,10 +504,12 @@ onUnmounted(() => {
 }
 
 .card-foot {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  padding-top: 2px;
 }
 
 .action-btn {
@@ -468,7 +526,7 @@ onUnmounted(() => {
   background: var(--cta-bg);
   color: var(--cta-ink);
   border: 1px solid transparent;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--cta-shadow);
 }
 
 .copy-btn:hover {
@@ -486,5 +544,15 @@ onUnmounted(() => {
   background: var(--fill-hover);
   border-color: var(--border-strong);
   color: var(--text-primary);
+}
+.overdue-note {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+  color: var(--danger);
+  font-size: 11.5px;
+  font-weight: 500;
 }
 </style>

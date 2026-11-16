@@ -375,18 +375,36 @@ function handleSave() {
     is_pinned: formIsPinned.value,
   });
 }
+function handleEditorKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    emit('close');
+  } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && canSave.value) {
+    event.preventDefault();
+    handleSave();
+  }
+}
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-card st-reticle" role="dialog" aria-modal="true" aria-label="日程编辑器">
-      <!-- Modal Header -->
-      <div class="modal-head">
-        <div class="modal-head-copy">
-          <span class="composer-eyebrow">SCHEDULE COMPOSER · TELEMETRY</span>
-          <h3 class="modal-title">{{ reminder ? '编辑日程' : '新建日程' }}</h3>
-        </div>
-        <button class="icon-btn" title="关闭" @click="$emit('close')">✕</button>
+  <Transition name="modal-fade">
+    <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+      <div class="modal-card st-reticle" role="dialog" aria-modal="true" aria-label="日程编辑器" @keydown="handleEditorKeydown">
+        <!-- Modal Header -->
+        <div class="modal-head">
+          <div class="modal-head-copy">
+            <span class="composer-eyebrow">SCHEDULE COMPOSER · TELEMETRY</span>
+            <h3 class="modal-title st-inline-icon">
+              <span class="shanshui-seal" title="拟定日程印">订</span>
+              <span>{{ reminder ? '编辑日程' : '新建日程' }}</span>
+            </h3>
+          </div>
+        <button class="modal-close-btn" title="关闭" aria-label="关闭" @click="$emit('close')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <!-- Form Grid -->
@@ -396,13 +414,15 @@ function handleSave() {
             <label class="field-label">日程标题 *</label>
             <button
               type="button"
-              class="ai-polish-btn"
+              class="ai-polish-btn st-inline-icon"
               :disabled="isPolishing"
               title="使用 AI 深度润色、提炼标题并自动拆分子任务"
               @click="handleAiPolish"
             >
-              <span v-if="isPolishing">✨ 润色中...</span>
-              <span v-else>✨ AI 润色</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+              </svg>
+              <span>{{ isPolishing ? '润色中...' : 'AI 润色' }}</span>
             </button>
           </div>
           <input
@@ -412,8 +432,13 @@ function handleSave() {
             placeholder="例如：下午团队周会"
             autofocus
           />
-          <div v-if="similarWarnings.length > 0" class="similar-warning-pill">
-            <span>💡 提示：检测到相似日程「{{ similarWarnings[0].title }}」，注意避免重复创建</span>
+          <div v-if="similarWarnings.length > 0" class="similar-warning-pill st-inline-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>检测到相似日程「{{ similarWarnings[0].title }}」，注意避免重复创建</span>
           </div>
         </div>
 
@@ -422,11 +447,14 @@ function handleSave() {
             <label class="field-label">提醒时刻 *</label>
             <button
               type="button"
-              class="find-slot-btn"
+              class="find-slot-btn st-inline-icon"
               :disabled="isFindingSlot"
               @click="handleFindOptimalSlot"
             >
-              {{ isFindingSlot ? '探测中...' : '⚡️ 推荐空闲时段' }}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <span>{{ isFindingSlot ? '探测中...' : '推荐空闲时段' }}</span>
             </button>
           </div>
           <input
@@ -440,7 +468,12 @@ function handleSave() {
           <span v-if="dateError" id="editor-date-error" class="field-error">{{ dateError }}</span>
           <!-- Night Guard -->
           <div v-if="isNightHours" class="night-guard-banner">
-            <span>🌙 深夜/清晨时段 ({{ new Date(formDateTime).getHours() }}:00)，可能会打扰休息</span>
+            <span class="st-inline-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+              <span>深夜 {{ new Date(formDateTime).getHours() }}:00 · 易打扰</span>
+            </span>
             <button type="button" class="night-adjust-btn" @click="adjustToNextMorning">改到明早 09:00</button>
           </div>
         </div>
@@ -450,7 +483,10 @@ function handleSave() {
             <label class="field-label">优先级</label>
             <label class="pinned-checkbox-label" title="置顶后始终排在列表最上方">
               <input type="checkbox" v-model="formIsPinned" />
-              <span class="star-icon">★</span> 置顶
+              <svg width="12" height="12" viewBox="0 0 24 24" :fill="formIsPinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="star-svg" aria-hidden="true">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              <span>置顶</span>
             </label>
           </div>
           <div class="priority-pill-group" role="radiogroup" aria-label="优先级选择">
@@ -476,7 +512,13 @@ function handleSave() {
 
         <!-- Conflict Alert Banner (Round 1) -->
         <div v-if="conflictInfo.hasConflict" class="conflict-alert-box full-width">
-          <span class="alert-icon">⚠️</span>
+          <span class="alert-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </span>
           <div class="alert-content">
             <div class="alert-title">
               与已有日程时间重叠：{{ conflictInfo.conflicts.map(c => c.title).join('、') }}
@@ -556,7 +598,14 @@ function handleSave() {
               <button type="button" class="preset-chip" @click="applySubtaskPreset('deploy')">+ 发布</button>
               <button type="button" class="preset-chip" @click="applySubtaskPreset('travel')">+ 出差</button>
               <button type="button" class="preset-chip" @click="applySubtaskPreset('weekly')">+ 周报</button>
-              <button type="button" class="preset-chip" title="自动解析备注中的 - [ ] 待办项" @click="extractChecklistFromNotes">📋 提取备注</button>
+              <button type="button" class="preset-chip st-inline-icon" title="自动解析备注中的 - [ ] 待办项" @click="extractChecklistFromNotes">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="8" y1="13" x2="16" y2="13" />
+                </svg>
+                <span>提取备注</span>
+              </button>
             </div>
           </div>
 
@@ -588,16 +637,31 @@ function handleSave() {
                   class="order-subtask-btn"
                   :disabled="idx === 0"
                   title="上移"
+                  aria-label="上移"
                   @click="moveSubtask(idx, 'up')"
-                >▲</button>
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="18 15 12 9 6 15" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   class="order-subtask-btn"
                   :disabled="idx === subtasks.length - 1"
                   title="下移"
+                  aria-label="下移"
                   @click="moveSubtask(idx, 'down')"
-                >▼</button>
-                <button type="button" class="del-subtask-btn" title="删除" @click="removeSubtask(idx)">✕</button>
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                <button type="button" class="del-subtask-btn" title="删除" aria-label="删除" @click="removeSubtask(idx)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -626,35 +690,39 @@ function handleSave() {
 
       <!-- Modal Footer -->
       <div class="modal-footer">
-        <button class="icon-btn cancel-btn" @click="$emit('close')">取消</button>
-        <button class="primary-btn" :disabled="!canSave" @click="handleSave">
-          {{ saving ? '保存中…' : '保存日程' }}
-        </button>
+        <span class="editor-shortcut-hint"><kbd>⌘↵</kbd> 快捷保存</span>
+        <div class="modal-footer-actions">
+          <button class="icon-btn cancel-btn" @click="$emit('close')">取消</button>
+          <button class="primary-btn" :disabled="!canSave" @click="handleSave">
+            {{ saving ? '保存中…' : '保存日程' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--z-overlay-high);
 }
 
 .modal-card {
   position: relative;
-  width: 560px;
+  width: 580px;
   max-width: 92vw;
-  max-height: 88vh;
+  max-height: min(86vh, 710px);
   border-radius: 18px;
-  padding: 20px 24px;
+  padding: 22px 24px;
   background:
     radial-gradient(65% 40% at 88% 0%, color-mix(in srgb, var(--tide) 9%, transparent), transparent 65%),
     var(--surface-raised);
@@ -662,21 +730,16 @@ function handleSave() {
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  animation: scale-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow-y: auto;
-}
-
-@keyframes scale-up {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  gap: 12px;
+  overflow: hidden;
 }
 
 .modal-head {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding-bottom: 10px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -700,9 +763,15 @@ function handleSave() {
 }
 
 .form-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  padding: 2px 6px 4px 1px;
+  margin-right: -6px;
+  align-content: start;
 }
 
 .form-field {
@@ -875,7 +944,7 @@ function handleSave() {
 
 .resolve-btn:hover {
   background: var(--danger);
-  color: #fff;
+  color: var(--ink-on-danger, #ffffff);
 }
 
 /* Preset Tags */
@@ -1041,10 +1110,36 @@ function handleSave() {
 }
 
 .modal-footer {
+  flex: none;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.editor-shortcut-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-quaternary);
+}
+
+.editor-shortcut-hint kbd {
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border-subtle);
+  background: var(--fill-subtle);
+  font: 700 10px var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.modal-footer-actions {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  margin-top: 6px;
 }
 
 .cancel-btn {
@@ -1088,7 +1183,8 @@ function handleSave() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 10.5px;
   color: var(--accent-text);
 }
 
@@ -1097,9 +1193,11 @@ function handleSave() {
   border: none;
   color: var(--cta-ink);
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10.5px;
+  white-space: nowrap;
+  flex: none;
   cursor: pointer;
   transition: background 0.15s;
 }

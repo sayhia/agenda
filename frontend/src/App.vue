@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
 import { Events, Window } from '@wailsio/runtime';
 import {
   GetReminders,
@@ -20,14 +20,39 @@ import {
   TriggerTestNotification,
   DuplicateReminder,
   RestoreReminder,
+  GetTrashReminders,
   OptimizeDatabase,
+  OpenDesktopWindow,
+  GetDesktopPreferences,
 } from '../bindings/agenda/internal/agenda/agendaservice';
 import type { Reminder, DeliveryRecord, UpdateReminderRequest } from '../bindings/agenda/internal/agenda/models';
 import type { ParsedReminder } from './utils/nlp';
 import { formatDateLabel } from './utils/format';
-import { playReminderChime, playCompleteSound } from './utils/audio';
+import { playReminderChime, playCompleteSound, setSoundProfile } from './utils/audio';
 import { exportToMarkdown, copyMarkdownToClipboard, triggerFileDownload } from './utils/export';
+import {
+  CANVAS_INTENSITY_LABELS,
+  CUSTOM_ACCENT_PRESETS,
+  THEME_AUTO_MODE_LABELS,
+  applyThemeToDocument,
+  cycleCanvasIntensity,
+  cycleTheme,
+  getHighContrastMode,
+  getPairedThemeId,
+  getShanshuiSerifMode,
+  getSoundFollowTheme,
+  getThemeAutoMode,
+  getThemeDefinition,
+  normalizeThemeId,
+  resolveEffectiveThemeId,
+  setCustomAccentOverride,
+  setHighContrastMode,
+  setShanshuiSerifMode,
+  setThemeAutoMode,
+  type ThemeAutoMode,
+} from './utils/themes';
 import { parseReminderTags, toUpdateReminderRequest } from './domain/reminder';
+import { executeAIAction } from './utils/aiActionExecutor';
 
 import type { StatsData, AgendaView } from './types/ui';
 import NavigationSidebar from './components/NavigationSidebar.vue';
@@ -39,26 +64,38 @@ import ReminderList from './components/ReminderList.vue';
 import WeekTimelineView from './components/WeekTimelineView.vue';
 import MonthCalendar from './components/MonthCalendar.vue';
 import EisenhowerMatrixView from './components/EisenhowerMatrixView.vue';
-import ReminderEditorModal from './components/ReminderEditorModal.vue';
-import HistoryModal from './components/HistoryModal.vue';
-import StatsDashboardModal from './components/StatsDashboardModal.vue';
 import BatchActionBar from './components/BatchActionBar.vue';
 import ToastNotice from './components/ToastNotice.vue';
 import TideSwirlCanvas from './components/TideSwirlCanvas.vue';
-import SettingsModal from './components/SettingsModal.vue';
-import AIAssistantDrawer from './components/AIAssistantDrawer.vue';
-import FocusTimerModal from './components/FocusTimerModal.vue';
-import DailyBriefingModal from './components/DailyBriefingModal.vue';
-import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
-import TrashModal from './components/TrashModal.vue';
-import CommandPaletteModal from './components/CommandPaletteModal.vue';
+import FocusFloatingWidget from './components/FocusFloatingWidget.vue';
+import { FOCUS_SESSION_STORAGE_KEY } from './utils/focus';
+import { focusEngineState, initFocusEngine, resetFloatingFocusWidget, stopFocusEngine } from './utils/focusEngine';
+
+const ReminderEditorModal = defineAsyncComponent(() => import('./components/ReminderEditorModal.vue'));
+const HistoryModal = defineAsyncComponent(() => import('./components/HistoryModal.vue'));
+const StatsDashboardModal = defineAsyncComponent(() => import('./components/StatsDashboardModal.vue'));
+const SettingsModal = defineAsyncComponent(() => import('./components/SettingsModal.vue'));
+const AIAssistantDrawer = defineAsyncComponent(() => import('./components/AIAssistantDrawer.vue'));
+const FocusTimerModal = defineAsyncComponent(() => import('./components/FocusTimerModal.vue'));
+const DailyBriefingModal = defineAsyncComponent(() => import('./components/DailyBriefingModal.vue'));
+const KeyboardShortcutsModal = defineAsyncComponent(() => import('./components/KeyboardShortcutsModal.vue'));
+const SolarTermsModal = defineAsyncComponent(() => import('./components/SolarTermsModal.vue'));
+const TrashModal = defineAsyncComponent(() => import('./components/TrashModal.vue'));
+const CommandPaletteModal = defineAsyncComponent(() => import('./components/CommandPaletteModal.vue'));
+
+const props = defineProps<{
+  isSecondaryWorkspace?: boolean;
+  initialView?: AgendaView;
+}>();
 
 // Element Refs for shortcuts
 const workspaceHeaderRef = ref<InstanceType<typeof WorkspaceHeader> | null>(null);
 const quickAddRef = ref<InstanceType<typeof QuickAddBar> | null>(null);
+const reminderListRef = ref<InstanceType<typeof ReminderList> | null>(null);
 
 // State
 const reminders = ref<Reminder[]>([]);
+const trashCount = ref(0);
 const isQuickAdding = ref(false);
 const isLoading = ref(true);
 const hasLoadedReminders = ref(false);
@@ -66,9 +103,17 @@ const selectedIds = ref<string[]>([]);
 const isBatchBusy = ref(false);
 const validViews: AgendaView[] = ['list', 'week', 'month', 'matrix'];
 const storedView = localStorage.getItem('agenda_current_view') as AgendaView | null;
-const currentView = ref<AgendaView>(storedView && validViews.includes(storedView) ? storedView : 'list');
+const currentView = ref<AgendaView>(
+  props.initialView && validViews.includes(props.initialView)
+    ? props.initialView
+    : storedView && validViews.includes(storedView)
+      ? storedView
+      : 'list',
+);
 watch(currentView, (v) => {
-  localStorage.setItem('agenda_current_view', v);
+  if (!props.isSecondaryWorkspace) {
+    localStorage.setItem('agenda_current_view', v);
+  }
 });
 const searchQuery = ref('');
 const activeFilter = ref('all'); // all, today, near, active, paused
@@ -82,7 +127,9 @@ let clockTimer: ReturnType<typeof setInterval> | null = null;
 
 const overdueCount = computed(() => {
   const now = nowTick.value;
-  return reminders.value.filter((r) => r.status === 'active' && new Date(r.scheduled_at).getTime() < now).length;
+  return reminders.value.filter(
+    (r) => r.status === 'expired' || (r.status === 'active' && new Date(r.scheduled_at).getTime() < now),
+  ).length;
 });
 const activeId = ref<string | null>(null);
 
@@ -110,6 +157,7 @@ const historyTitle = ref('');
 const historyRecords = ref<DeliveryRecord[]>([]);
 
 const showSettings = ref(false);
+const settingsInitialTab = ref<'appearance' | 'reminders' | 'desktop' | 'ai' | 'data' | 'about'>('appearance');
 const showAIDrawer = ref(false);
 const showStatsDashboard = ref(false);
 
@@ -118,6 +166,7 @@ const showFocusTimer = ref(false);
 const focusReminder = ref<Reminder | null>(null);
 const showDailyBriefing = ref(false);
 const showKeyboardShortcuts = ref(false);
+const showSolarTerms = ref(false);
 const showTrash = ref(false);
 const showCommandPalette = ref(false);
 const isCompactMode = ref(localStorage.getItem('agenda_compact_mode') === 'true');
@@ -130,6 +179,7 @@ const activeOverlayKey = computed(() => {
   if (showCommandPalette.value) return 'command';
   if (showFocusTimer.value) return 'focus';
   if (showDailyBriefing.value) return 'briefing';
+  if (showSolarTerms.value) return 'solar-terms';
   if (showKeyboardShortcuts.value) return 'shortcuts';
   if (showTrash.value) return 'trash';
   if (showStatsDashboard.value) return 'stats';
@@ -165,7 +215,7 @@ watch(activeOverlayKey, async (current, previous) => {
 });
 
 function trapDialogFocus(event: KeyboardEvent): boolean {
-  if (event.key !== 'Tab' || !hasOpenOverlay.value) return false;
+  if (event.key !== 'Tab') return false;
   const dialog = getTopDialog();
   if (!dialog) return false;
   const controls = Array.from(dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
@@ -177,6 +227,11 @@ function trapDialogFocus(event: KeyboardEvent): boolean {
   }
   const first = controls[0];
   const last = controls[controls.length - 1];
+  if (!dialog.contains(document.activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return true;
+  }
   if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     last.focus();
@@ -262,6 +317,15 @@ async function handleInlineUpdateTitle(reminder: Reminder, newTitle: string) {
     showToast('已更新日程标题', 'success');
   } catch (err: any) {
     showToast(`更新标题失败: ${err.message || err}`, 'error');
+  }
+}
+
+async function handleUpdateNotes(reminder: Reminder, notes: string) {
+  try {
+    await updateReminderLatest(reminder, { notes });
+    playCompleteSound(0.15);
+  } catch (err: any) {
+    showToast(`更新备注清单失败: ${err.message || err}`, 'error');
   }
 }
 
@@ -361,7 +425,7 @@ const stats = computed<StatsData>(() => {
       paused++;
       continue;
     }
-    if (r.status === 'ended') {
+    if (r.status === 'ended' || r.status === 'expired') {
       continue;
     }
 
@@ -429,7 +493,9 @@ const filteredReminders = computed(() => {
   // Overdue filter
   if (filterOverdueOnly.value) {
     const now = nowTick.value;
-    list = list.filter((r) => r.status === 'active' && new Date(r.scheduled_at).getTime() < now);
+    list = list.filter(
+      (r) => r.status === 'expired' || (r.status === 'active' && new Date(r.scheduled_at).getTime() < now),
+    );
   }
 
   // Weekstrip selected date
@@ -484,9 +550,13 @@ async function loadReminders() {
     isLoading.value = true;
   }
   try {
-    const res = await GetReminders();
+    const [res, trashRes] = await Promise.all([
+      GetReminders(),
+      GetTrashReminders().catch(() => []),
+    ]);
     if (requestId === reminderLoadSequence) {
       reminders.value = res || [];
+      trashCount.value = Array.isArray(trashRes) ? trashRes.length : 0;
     }
   } catch (err: any) {
     console.error('加载日程失败:', err);
@@ -591,6 +661,10 @@ async function handleSaveReminder(data: any) {
   isSavingEditor.value = true;
   try {
     if (data.id) {
+      const nextStatus =
+        data.status === 'expired' && new Date(data.scheduled_at).getTime() > Date.now()
+          ? 'active'
+          : data.status;
       await UpdateReminder({
         id: data.id,
         title: data.title,
@@ -601,7 +675,7 @@ async function handleSaveReminder(data: any) {
         notes: data.notes,
         timezone: data.timezone,
         prompt: data.prompt,
-        status: data.status,
+        status: nextStatus,
         priority: data.priority || 'p2',
         tags: data.tags || '',
         subtasks: data.subtasks || '',
@@ -757,21 +831,24 @@ async function handleDuplicateReminder(reminder: Reminder, offsetDays = 1) {
 
 function handleStartFocus(reminder?: Reminder) {
   let target = reminder;
+  if (!target && focusEngineState.reminderId) {
+    target = reminders.value.find((item) => item.id === focusEngineState.reminderId && item.status === 'active');
+  }
   if (!target) {
     try {
-      const saved = JSON.parse(localStorage.getItem('agenda_focus_session') || 'null');
+      const saved = JSON.parse(localStorage.getItem(FOCUS_SESSION_STORAGE_KEY) || 'null');
       target = reminders.value.find((item) => item.id === saved?.reminderId && item.status === 'active');
     } catch {
       // Ignore invalid local focus state.
     }
   }
   focusReminder.value = target || reminders.value.find((item) => item.status === 'active') || null;
+  resetFloatingFocusWidget();
   showFocusTimer.value = true;
 }
 
 function handleCloseFocus() {
   showFocusTimer.value = false;
-  focusReminder.value = null;
 }
 
 async function handleFocusCompleteTask(reminder: Reminder) {
@@ -829,9 +906,13 @@ async function handleRescheduleReminder(reminder: Reminder, scheduledAt: string)
       throw new Error('无效的排期时间');
     }
 
-    await updateReminderLatest(reminder, {
+    const patch: Partial<Omit<UpdateReminderRequest, 'id'>> = {
       scheduled_at: target.toISOString(),
-    });
+    };
+    if (reminder.status === 'expired' && target.getTime() > Date.now()) {
+      patch.status = 'active';
+    }
+    await updateReminderLatest(reminder, patch);
     showToast(`已将「${reminder.title}」移动到 ${target.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 'success');
   } catch (err: any) {
     showToast(`移动日程失败: ${err.message || err}`, 'error');
@@ -932,7 +1013,11 @@ async function handleBatchPostponeHour() {
     try {
       const date = new Date(item.scheduled_at);
       date.setHours(date.getHours() + 1);
-      await updateReminderLatest(item, { scheduled_at: date.toISOString() });
+      const patch: Partial<Omit<UpdateReminderRequest, 'id'>> = { scheduled_at: date.toISOString() };
+      if (item.status === 'expired' && date.getTime() > Date.now()) {
+        patch.status = 'active';
+      }
+      await updateReminderLatest(item, patch);
       successes.push(item.id);
     } catch {
       failures.push(item.id);
@@ -964,7 +1049,11 @@ async function handleBatchPostponeDay() {
     try {
       const date = new Date(item.scheduled_at);
       date.setDate(date.getDate() + 1);
-      await updateReminderLatest(item, { scheduled_at: date.toISOString() });
+      const patch: Partial<Omit<UpdateReminderRequest, 'id'>> = { scheduled_at: date.toISOString() };
+      if (item.status === 'expired' && date.getTime() > Date.now()) {
+        patch.status = 'active';
+      }
+      await updateReminderLatest(item, patch);
       successes.push(item.id);
     } catch {
       failures.push(item.id);
@@ -1051,13 +1140,7 @@ async function handleBatchDelete() {
 async function handleExportICS() {
   try {
     const icsContent = await ExportICS();
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Agenda_Butler_${new Date().toISOString().slice(0, 10)}.ics`;
-    a.click();
-    URL.revokeObjectURL(url);
+    triggerFileDownload(icsContent, `Agenda_Butler_${new Date().toISOString().slice(0, 10)}.ics`, 'text/calendar;charset=utf-8');
     showToast('已成功导出 iCalendar (.ics) 日历文件', 'success');
   } catch (err: any) {
     showToast(`导出失败: ${err.message || err}`, 'error');
@@ -1077,13 +1160,7 @@ async function handleImportICS(content: string) {
 async function handleExportCSV() {
   try {
     const csvContent = await ExportCSV();
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Agenda_Butler_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    triggerFileDownload(csvContent, `Agenda_Butler_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
     showToast('已成功导出标准 CSV 表格文件', 'success');
   } catch (err: any) {
     showToast(`导出失败: ${err.message || err}`, 'error');
@@ -1109,134 +1186,38 @@ async function handleTestNotify() {
   }
 }
 
-function findReminderForAIAction(action: any): Reminder | null {
-  const id = action.id || action.reminder_id || action.reminderID;
-  if (id) {
-    return reminders.value.find((r) => r.id === id) || null;
-  }
-
-  const title = String(action.reminder_title || action.title || '').trim().toLowerCase();
-  if (!title) return null;
-  return reminders.value.find((r) => r.title.trim().toLowerCase() === title) || null;
-}
-
 async function handleApplyAIAction(action: any) {
   try {
-    const actionType = String(action.action || 'create').toLowerCase();
-
-    if (actionType === 'create_batch' && Array.isArray(action.items)) {
-      let count = 0;
-      for (const item of action.items) {
-        await AddReminder({
-          title: item.title,
-          scheduled_at: item.scheduled_at,
-          repeat_rule: item.repeat_rule || '',
-          lead_minutes: item.lead_minutes || 0,
-          duration_minutes: item.duration_minutes || 15,
-          notes: item.notes || '',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
-          prompt: `提醒您：${item.title}`,
-          priority: item.priority || 'p2',
-          tags: item.tags || '',
-          subtasks: item.subtasks || '',
-          is_pinned: Boolean(item.is_pinned),
-        });
-        action.__onItemApplied?.(count);
-        count++;
-      }
-      await loadReminders();
-      showToast(`已通过 AI 智能批量安排 ${count} 项日程`, 'success');
-      action.__onApplied?.();
-      return;
-    }
-
-    if (actionType === 'delete') {
-      const target = findReminderForAIAction(action);
-      if (!target) throw new Error('未找到要删除的日程');
-      await DeleteReminder(target.id);
-      await loadReminders();
-      showToast(`已删除日程：${target.title}`, 'success');
-      action.__onApplied?.();
-      return;
-    }
-
-    if (actionType === 'snooze') {
-      const target = findReminderForAIAction(action);
-      if (!target) throw new Error('未找到要顺延的日程');
-      await handleSnooze(target, Number(action.minutes) || 30);
-      action.__onApplied?.();
-      return;
-    }
-
-    if (actionType === 'complete' || actionType === 'end') {
-      const target = findReminderForAIAction(action);
-      if (!target) throw new Error('未找到要完成的日程');
-      await BatchSetStatus([target.id], 'ended');
-      await loadReminders();
-      showToast(`已完成日程：${target.title}`, 'success');
-      action.__onApplied?.();
-      return;
-    }
-
-    if (actionType === 'pause' || actionType === 'resume') {
-      const target = findReminderForAIAction(action);
-      if (!target) throw new Error('未找到要更新状态的日程');
-      await BatchSetStatus([target.id], actionType === 'pause' ? 'paused' : 'active');
-      await loadReminders();
-      showToast(actionType === 'pause' ? `已暂停：${target.title}` : `已恢复：${target.title}`, 'success');
-      action.__onApplied?.();
-      return;
-    }
-
-    if (actionType === 'update') {
-      const target = findReminderForAIAction(action);
-      if (!target) throw new Error('未找到要修改的日程');
-      await UpdateReminder({
-        id: target.id,
-        title: action.title || target.title,
-        scheduled_at: action.scheduled_at || target.scheduled_at,
-        repeat_rule: action.repeat_rule ?? target.repeat_rule,
-        lead_minutes: action.lead_minutes ?? target.lead_minutes,
-        duration_minutes: action.duration_minutes ?? target.duration_minutes,
-        notes: action.notes ?? target.notes,
-        timezone: action.timezone || target.timezone,
-        prompt: action.prompt ?? target.prompt,
-        status: action.status || target.status,
-        priority: action.priority || target.priority || 'p2',
-        tags: action.tags ?? target.tags,
-        subtasks: action.subtasks ?? target.subtasks,
-        is_pinned: action.is_pinned ?? target.is_pinned,
-      });
-      await loadReminders();
-      showToast(`已更新日程：${action.title || target.title}`, 'success');
-      action.__onApplied?.();
-      return;
-    }
-
-    if (actionType === 'create') {
-      const created = await AddReminder({
-        title: action.title,
-        scheduled_at: action.scheduled_at,
-        repeat_rule: action.repeat_rule || '',
-        lead_minutes: action.lead_minutes || 0,
-        duration_minutes: action.duration_minutes || 30,
-        notes: action.notes || '',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
-        prompt: `提醒您：${action.title}`,
-        priority: action.priority || 'p2',
-        tags: action.tags || '',
-        subtasks: action.subtasks || '',
-        is_pinned: Boolean(action.is_pinned),
-      });
-      if (created) {
-        await loadReminders();
-        showToast(`已通过 AI 智能安排日程: ${created.title}`, 'success');
-        action.__onApplied?.();
-      }
+    const msg = await executeAIAction(action, reminders.value, loadReminders);
+    if (msg) {
+      showToast(msg, 'success');
     }
   } catch (err: any) {
     showToast(`执行失败: ${err.message || err}`, 'error');
   }
+}
+
+async function handleOpenWindow(kind: string, param = '') {
+  try {
+    await OpenDesktopWindow(kind, param);
+  } catch (err: any) {
+    showToast(`打开窗口失败: ${err?.message || err}`, 'error');
+  }
+}
+
+function handlePopoutFocus() {
+  showFocusTimer.value = false;
+  void handleOpenWindow('focus');
+}
+
+function handlePopoutAI() {
+  showAIDrawer.value = false;
+  void handleOpenWindow('ai');
+}
+
+function openSettingsOnTab(tab: 'appearance' | 'reminders' | 'desktop' | 'ai' | 'data' | 'about' = 'appearance') {
+  settingsInitialTab.value = tab;
+  showSettings.value = true;
 }
 
 function handleSidebarChangeView(view: 'list' | 'week' | 'month' | 'matrix') {
@@ -1249,6 +1230,7 @@ function handleSidebarSelectFilter(filter: string) {
   currentView.value = 'list';
   filterOverdueOnly.value = false;
   selectedTag.value = null;
+  selectedTags.value = [];
   selectedDate.value = null;
 }
 
@@ -1257,6 +1239,7 @@ function handleSidebarToggleOverdue() {
   if (filterOverdueOnly.value) {
     currentView.value = 'list';
     selectedTag.value = null;
+    selectedTags.value = [];
     selectedDate.value = null;
     activeFilter.value = 'all';
   }
@@ -1280,6 +1263,10 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
     }
     if (showDailyBriefing.value) {
       showDailyBriefing.value = false;
+      return;
+    }
+    if (showSolarTerms.value) {
+      showSolarTerms.value = false;
       return;
     }
     if (showKeyboardShortcuts.value) {
@@ -1310,8 +1297,13 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
       showAIDrawer.value = false;
       return;
     }
-    if (selectedTag.value) {
+    if (selectedTag.value || selectedTags.value.length > 0) {
       selectedTag.value = null;
+      selectedTags.value = [];
+      return;
+    }
+    if (filterOverdueOnly.value) {
+      filterOverdueOnly.value = false;
       return;
     }
     if (selectedDate.value) {
@@ -1352,6 +1344,14 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
     } else if (e.key.toLowerCase() === 'f') {
       e.preventDefault();
       workspaceHeaderRef.value?.focusSearch();
+    } else if (e.key.toLowerCase() === 'd') {
+      if (currentView.value === 'list' && activeId.value) {
+        const item = filteredReminders.value.find((r) => r.id === activeId.value);
+        if (item) {
+          e.preventDefault();
+          void handleDuplicateReminder(item, 1);
+        }
+      }
     } else if (e.key.toLowerCase() === 'z') {
       if (lastDeletedId.value || hasUndo.value) {
         e.preventDefault();
@@ -1383,17 +1383,36 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
     showStatsDashboard.value ||
     showFocusTimer.value ||
     showDailyBriefing.value ||
+    showSolarTerms.value ||
     showKeyboardShortcuts.value ||
-    showTrash.value
+    showTrash.value ||
+    Boolean(document.querySelector('[role="dialog"]'))
   ) {
     return;
   }
 
-  // Pro Shortcuts: '?' for Cheat Sheet
+  // Pro Shortcuts: '?' for Cheat Sheet, 'Shift+T' for polarity toggle, '{' / '}' to cycle themes
   if (e.key === '?' || (e.shiftKey && e.key === '/')) {
     e.preventDefault();
     showKeyboardShortcuts.value = true;
     return;
+  }
+  if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.shiftKey && e.key.toLowerCase() === 't') {
+      e.preventDefault();
+      handleToggleThemePolarity();
+      return;
+    }
+    if (e.key === '{') {
+      e.preventDefault();
+      handleCycleTheme(-1);
+      return;
+    }
+    if (e.key === '}') {
+      e.preventDefault();
+      handleCycleTheme(1);
+      return;
+    }
   }
 
   // View switching shortcuts (1: list, 2: week, 3: month, 4: matrix)
@@ -1408,6 +1427,13 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
     return;
   } else if (e.key === '4') {
     currentView.value = 'matrix';
+    return;
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') {
+    e.preventDefault();
+    const listItem = activeId.value
+      ? filteredReminders.value.find((r) => r.id === activeId.value)
+      : undefined;
+    handleStartFocus(listItem);
     return;
   }
 
@@ -1438,14 +1464,6 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
       const item = list.find((r) => r.id === activeId.value);
       if (item) {
         handleToggleStatus(item);
-      }
-    }
-  } else if (e.key === 'p') {
-    if (activeId.value) {
-      e.preventDefault();
-      const item = list.find((r) => r.id === activeId.value);
-      if (item) {
-        handleStartFocus(item);
       }
     }
   } else if (e.key === 'e') {
@@ -1491,15 +1509,106 @@ function handleDomFullscreenChange() {
   void syncWindowFullscreenState();
 }
 
+const activeThemeId = ref(resolveEffectiveThemeId());
+const themeAutoMode = ref<ThemeAutoMode>(getThemeAutoMode());
+let systemColorSchemeQuery: MediaQueryList | null = null;
+
+function applyEffectiveTheme(animate = false) {
+  const effective = resolveEffectiveThemeId({ mode: themeAutoMode.value });
+  const applied = applyThemeToDocument(effective, { animate });
+  activeThemeId.value = applied;
+  if (getSoundFollowTheme()) {
+    const recSound = getThemeDefinition(applied)?.recommendedSound;
+    if (recSound) setSoundProfile(recSound);
+  }
+}
+
+function syncThemePreference(event?: Event) {
+  const detail = (event as CustomEvent<string> | undefined)?.detail;
+  themeAutoMode.value = getThemeAutoMode();
+  const nextId = detail ? normalizeThemeId(detail) : resolveEffectiveThemeId({ mode: themeAutoMode.value });
+  activeThemeId.value = applyThemeToDocument(nextId);
+}
+
+function syncThemeModePreference(event?: Event) {
+  const detail = (event as CustomEvent<ThemeAutoMode> | undefined)?.detail;
+  themeAutoMode.value = detail ?? getThemeAutoMode();
+  applyEffectiveTheme(true);
+}
+
 function handleSelectTheme(theme: string) {
-  localStorage.setItem('agenda_theme', theme);
-  if (theme && theme !== 'midnight' && theme !== 'obsidian') {
-    document.documentElement.setAttribute('data-theme', theme);
-  } else {
-    document.documentElement.removeAttribute('data-theme');
+  const normalized = normalizeThemeId(theme);
+  if (themeAutoMode.value === 'seasonal') {
+    setThemeAutoMode('manual');
+    themeAutoMode.value = 'manual';
+  }
+  activeThemeId.value = applyThemeToDocument(normalized, {
+    animate: true,
+    persist: true,
+    dispatch: true,
+  });
+  if (getSoundFollowTheme()) {
+    const recSound = getThemeDefinition(normalized)?.recommendedSound;
+    if (recSound) setSoundProfile(recSound);
   }
   showCommandPalette.value = false;
-  showToast(`已切换主题至 ${theme}`, 'success');
+  const label = getThemeDefinition(normalized)?.name || normalized;
+  showToast(`已切换主题至「${label}」`, 'success');
+}
+
+function handleSetThemeMode(mode: ThemeAutoMode) {
+  setThemeAutoMode(mode);
+  themeAutoMode.value = mode;
+  applyEffectiveTheme(true);
+  showCommandPalette.value = false;
+  const info = THEME_AUTO_MODE_LABELS[mode];
+  const activeDef = getThemeDefinition(activeThemeId.value);
+  showToast(`已开启「${info.label}」· 当前：${activeDef?.name || activeThemeId.value}`, 'success');
+}
+
+function handleToggleThemePolarity() {
+  const nextId = getPairedThemeId(activeThemeId.value);
+  handleSelectTheme(nextId);
+}
+
+function handleCycleTheme(direction: 1 | -1 = 1) {
+  const nextDef = cycleTheme(activeThemeId.value, direction, 'all');
+  handleSelectTheme(nextDef.id);
+}
+
+function handleCycleCanvasIntensity() {
+  const next = cycleCanvasIntensity();
+  showCommandPalette.value = false;
+  showToast(`已切换背景意境浓度为「${CANVAS_INTENSITY_LABELS[next].label}」`, 'info');
+}
+
+function handleSelectCustomAccent(accentId: string) {
+  const normalized = setCustomAccentOverride(accentId);
+  showCommandPalette.value = false;
+  if (normalized === 'default') {
+    showToast('已恢复当前主题原境默认点睛色', 'success');
+  } else {
+    const preset = CUSTOM_ACCENT_PRESETS.find((p) => p.id === normalized);
+    showToast(`已叠加点睛色：${preset ? preset.name : normalized}`, 'success');
+  }
+}
+
+function handleResetCustomAccent() {
+  setCustomAccentOverride('default');
+  showCommandPalette.value = false;
+  showToast('已恢复当前主题原境默认点睛色', 'success');
+}
+
+function handleToggleHighContrast() {
+  const next = setHighContrastMode(!getHighContrastMode());
+  showCommandPalette.value = false;
+  showToast(next ? '已开启高对比护眼模式' : '已关闭高对比护眼模式', 'info');
+}
+
+function handleToggleShanshuiSerif() {
+  const next = setShanshuiSerifMode(!getShanshuiSerifMode());
+  showCommandPalette.value = false;
+  showToast(next ? '已开启山水雅宋标题字体' : '已切换为系统无衬线标题', 'info');
 }
 
 function syncSoundPreference(event?: Event) {
@@ -1509,31 +1618,107 @@ function syncSoundPreference(event?: Event) {
     : localStorage.getItem('agenda_sound_enabled') !== 'false';
 }
 
+function handleSystemColorSchemeChange() {
+  if (themeAutoMode.value === 'system') applyEffectiveTheme(true);
+}
+
 onMounted(async () => {
-  const savedTheme = localStorage.getItem('agenda_theme');
-  if (savedTheme && savedTheme !== 'midnight') document.documentElement.setAttribute('data-theme', savedTheme);
-  else document.documentElement.removeAttribute('data-theme');
+  applyEffectiveTheme(false);
+  initFocusEngine(showToast);
 
   window.addEventListener('keydown', handleGlobalKeyDown);
   window.addEventListener('agenda:sound-preference', syncSoundPreference);
+  window.addEventListener('agenda:theme-change', syncThemePreference);
+  window.addEventListener('agenda:theme-mode-change', syncThemeModePreference);
+  systemColorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  systemColorSchemeQuery.addEventListener('change', handleSystemColorSchemeChange);
   document.addEventListener('fullscreenchange', handleDomFullscreenChange);
-  clockTimer = setInterval(() => { nowTick.value = Date.now(); }, 30_000);
+  clockTimer = setInterval(() => {
+    nowTick.value = Date.now();
+    if (themeAutoMode.value === 'circadian' || themeAutoMode.value === 'seasonal') {
+      const next = resolveEffectiveThemeId({ mode: themeAutoMode.value });
+      if (next !== activeThemeId.value) applyEffectiveTheme(true);
+    }
+  }, 30_000);
   await Promise.all([loadReminders(), syncWindowFullscreenState()]);
+
+  async function syncDesktopDndPrefs() {
+    if (props.isSecondaryWorkspace) return;
+    try {
+      const dp = await GetDesktopPreferences();
+      if (dp) {
+        localStorage.setItem('agenda_dnd_enabled', String(dp.dnd_enabled));
+        localStorage.setItem('agenda_dnd_start', dp.dnd_start);
+        localStorage.setItem('agenda_dnd_end', dp.dnd_end);
+      }
+    } catch {
+      // Ignore outside Wails runtime.
+    }
+  }
+  await syncDesktopDndPrefs();
 
   unsubscribeWailsEvents.push(
     Events.On('reminders-updated', requestRemindersRefresh),
-    Events.On('open-create-modal', () => openCreateModal()),
-    Events.On('open-ai-drawer', () => { showAIDrawer.value = true; }),
+    Events.On('desktop-status-updated', () => { void syncDesktopDndPrefs(); }),
+    Events.On('open-create-modal', () => {
+      if (!props.isSecondaryWorkspace) openCreateModal();
+    }),
+    Events.On('open-ai-drawer', () => {
+      if (!props.isSecondaryWorkspace) showAIDrawer.value = true;
+    }),
+    Events.On('open-ai-action-draft', (payload: any) => {
+      if (props.isSecondaryWorkspace) return;
+      const raw = String(Array.isArray(payload?.data) ? payload.data[0] : (payload?.data ?? payload) || '');
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          handleEditAIAction(parsed);
+        }
+      } catch {
+        // Ignore malformed payload.
+      }
+    }),
+    Events.On('open-reminder-detail', async (payload: any) => {
+      if (props.isSecondaryWorkspace) return;
+      const targetId = String(Array.isArray(payload?.data) ? payload.data[0] : (payload?.data ?? payload) || '');
+      if (!targetId) return;
+      await loadReminders();
+      const found = reminders.value.find((r) => r.id === targetId);
+      if (found) openEditModal(found);
+    }),
+    Events.On('open-settings-tab', (payload: any) => {
+      if (props.isSecondaryWorkspace) return;
+      const tab = String(Array.isArray(payload?.data) ? payload.data[0] : (payload?.data ?? payload) || 'appearance');
+      const allowed = ['appearance', 'reminders', 'desktop', 'ai', 'data', 'about'];
+      openSettingsOnTab((allowed.includes(tab) ? tab : 'appearance') as any);
+    }),
     Events.On('window-fullscreen', (payload: any) => {
       const value = Array.isArray(payload?.data) ? payload.data[0] : (payload?.data ?? payload);
       isWindowFullscreen.value = Boolean(value);
     }),
     Events.On('common:WindowFullscreen', () => { isWindowFullscreen.value = true; }),
     Events.On('common:WindowUnFullscreen', () => { isWindowFullscreen.value = false; }),
+    Events.On('reminder-lead-triggered', (payload: any) => {
+      const data = payload?.data || payload;
+      if (props.isSecondaryWorkspace) return;
+      const soundEnabled = localStorage.getItem('agenda_sound_enabled') !== 'false';
+      const isQuietHours = Boolean(data?.muted) || isWithinQuietHours();
+      if (soundEnabled && !isQuietHours) playReminderChime();
+      const leadMins = data?.lead_minutes || 10;
+      showToast(
+        `⏳ 即将开始 (${leadMins}分钟后)：${data?.title || '日程提醒'}`,
+        'info'
+      );
+    }),
     Events.On('reminder-triggered', (payload: any) => {
       const data = payload?.data || payload;
+      if (props.isSecondaryWorkspace) {
+        void loadReminders();
+        return;
+      }
       const soundEnabled = localStorage.getItem('agenda_sound_enabled') !== 'false';
-      const isQuietHours = isWithinQuietHours();
+      const isQuietHours = Boolean(data?.muted) || isWithinQuietHours();
       const isEmergency = data?.priority === 'p0' || data?.is_emergency;
       if (soundEnabled && (!isQuietHours || isEmergency)) playReminderChime();
       showToast(
@@ -1548,10 +1733,14 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeyDown);
   window.removeEventListener('agenda:sound-preference', syncSoundPreference);
+  window.removeEventListener('agenda:theme-change', syncThemePreference);
+  window.removeEventListener('agenda:theme-mode-change', syncThemeModePreference);
+  systemColorSchemeQuery?.removeEventListener('change', handleSystemColorSchemeChange);
   document.removeEventListener('fullscreenchange', handleDomFullscreenChange);
   unsubscribeWailsEvents.splice(0).forEach((unsubscribe) => unsubscribe());
   if (clockTimer) clearInterval(clockTimer);
   clearTimeout(toastTimer);
+  stopFocusEngine();
 });
 </script>
 
@@ -1572,16 +1761,23 @@ onUnmounted(() => {
       :currentView="currentView"
       :activeFilter="activeFilter"
       :filterOverdueOnly="filterOverdueOnly"
-      :selectedTag="selectedTag"
+      :selectedTag="selectedTags.length > 1 ? selectedTags.join(tagFilterMode === 'and' ? ' & ' : ' | ') : selectedTag"
       :selectedDate="selectedDate"
       :itemCount="filteredReminders.length"
       :isCompactMode="isCompactMode"
       :isSidebarCollapsed="isSidebarCollapsed"
       :isMac="isMac"
       :isFullscreen="isWindowFullscreen"
+      :currentTheme="activeThemeId"
+      :themeMode="themeAutoMode"
+      :isSecondaryWorkspace="props.isSecondaryWorkspace"
+      @select-theme="handleSelectTheme"
+      @set-theme-mode="handleSetThemeMode"
+      @toggle-theme-polarity="handleToggleThemePolarity"
+      @cycle-theme="handleCycleTheme"
       @change-view="handleSidebarChangeView"
       @clear-date-filter="selectedDate = null"
-      @clear-tag-filter="selectedTag = null"
+      @clear-tag-filter="selectedTag = null; selectedTags = []"
       @export-ics="handleExportICS"
       @import-ics="handleImportICS"
       @export-csv="handleExportCSV"
@@ -1592,6 +1788,10 @@ onUnmounted(() => {
       @open-palette="showCommandPalette = true"
       @toggle-sidebar="isSidebarCollapsed = !isSidebarCollapsed"
       @refresh-data="loadReminders"
+      @open-solar-terms="showSolarTerms = true"
+      @open-focus="handleStartFocus()"
+      @open-window="handleOpenWindow"
+      @open-desktop-settings="openSettingsOnTab('desktop')"
     />
 
     <!-- 2. Workspace Shell (Sidebar + Main Area below Unified TitleBar) -->
@@ -1610,6 +1810,7 @@ onUnmounted(() => {
         :reminders="reminders"
         :stats="stats"
         :overdueCount="overdueCount"
+        :trashCount="trashCount"
         :isCollapsed="isSidebarCollapsed"
         :isFullscreen="isWindowFullscreen"
         :isSoundEnabled="isSoundEnabled"
@@ -1625,8 +1826,9 @@ onUnmounted(() => {
         @open-focus="handleStartFocus"
         @open-briefing="showDailyBriefing = true"
         @open-trash="showTrash = true"
-        @open-settings="showSettings = true"
+        @open-settings="openSettingsOnTab('appearance')"
         @open-shortcuts="showKeyboardShortcuts = true"
+        @open-solar-terms="showSolarTerms = true"
         @toggle-collapse="isSidebarCollapsed = !isSidebarCollapsed"
         @toggle-sound="handleToggleSound"
         @refresh-data="loadReminders"
@@ -1655,6 +1857,7 @@ onUnmounted(() => {
           @select-date="handleDateFilter"
           @select-filter="handleSidebarSelectFilter"
           @open-reminder="openEditModal"
+          @open-solar-terms="showSolarTerms = true"
         />
 
         <WeekStrip
@@ -1671,6 +1874,7 @@ onUnmounted(() => {
         <Transition name="view-switch" mode="out-in">
         <ReminderList
           v-if="currentView === 'list'"
+          ref="reminderListRef"
           :reminders="filteredReminders"
           :loading="isLoading"
           :selectedIds="selectedIds"
@@ -1693,6 +1897,7 @@ onUnmounted(() => {
           @start-focus="handleStartFocus"
           @update-title="handleInlineUpdateTitle"
           @update-priority="handleUpdatePriority"
+          @update-notes="handleUpdateNotes"
           @activate="activeId = $event"
           @toast="showToast"
           @open-create="openCreateModal"
@@ -1706,6 +1911,7 @@ onUnmounted(() => {
           @select-reminder="openEditModal"
           @create-at-time="openCreateModalWithDate"
           @reschedule="handleRescheduleReminder"
+          @open-solar-terms="showSolarTerms = true"
         />
 
         <EisenhowerMatrixView
@@ -1729,6 +1935,7 @@ onUnmounted(() => {
           @delete-reminder="handleDeleteReminder"
           @create-on-date="openCreateModalWithDate"
           @reschedule="handleRescheduleReminder"
+          @open-solar-terms="showSolarTerms = true"
         />
         </Transition>
       </main>
@@ -1753,6 +1960,8 @@ onUnmounted(() => {
     </div>
 
     <!-- Modals & Drawers Layer -->
+    <div id="reminder-inspector-portal"></div>
+
     <ReminderEditorModal
       :visible="showEditor"
       :reminder="editingReminder"
@@ -1774,6 +1983,7 @@ onUnmounted(() => {
     <SettingsModal
       :visible="showSettings"
       :reminders="reminders"
+      :initialTab="settingsInitialTab"
       @close="showSettings = false"
       @test-notify="handleTestNotify"
       @toast="showToast"
@@ -1795,18 +2005,30 @@ onUnmounted(() => {
       :reminders="reminders"
       :overdueCount="overdueCount"
       @close="showAIDrawer = false"
+      @popout="handlePopoutAI"
       @apply-action="handleApplyAIAction"
       @edit-action="handleEditAIAction"
-      @open-settings="showAIDrawer = false; showSettings = true"
+      @open-settings="showAIDrawer = false; openSettingsOnTab('ai')"
     />
 
-    <!-- Focus Pomodoro Timer Modal (Round 23) -->
+    <!-- Focus Pomodoro Timer Modal (100-Round Enhanced Engine) -->
     <FocusTimerModal
       :visible="showFocusTimer"
       :reminder="focusReminder"
+      :reminders="reminders"
       @close="handleCloseFocus"
+      @popout="handlePopoutFocus"
       @complete-task="handleFocusCompleteTask"
+      @update-subtasks="handleUpdateSubtasks"
+      @switch-task="(r) => { focusReminder = r; }"
+      @cycle-theme="handleCycleTheme"
       @toast="showToast"
+    />
+
+    <!-- Corner Picture-in-Picture Focus Floating Mini Widget -->
+    <FocusFloatingWidget
+      :modalVisible="showFocusTimer"
+      @open-modal="handleStartFocus()"
     />
 
     <!-- Daily Briefing Modal (Round 28) -->
@@ -1823,6 +2045,15 @@ onUnmounted(() => {
       @close="showKeyboardShortcuts = false"
     />
 
+    <!-- 24 Solar Terms & Four Seasons Almanac Modal -->
+    <SolarTermsModal
+      :visible="showSolarTerms"
+      :currentTheme="activeThemeId"
+      @close="showSolarTerms = false"
+      @select-theme="handleSelectTheme"
+      @create-on-date="openCreateModalWithDate"
+    />
+
     <!-- Spotlight Command Palette Modal (⌘K) -->
     <CommandPaletteModal
       :visible="showCommandPalette"
@@ -1830,6 +2061,7 @@ onUnmounted(() => {
       :currentView="currentView"
       :isSidebarCollapsed="isSidebarCollapsed"
       :isCompactMode="isCompactMode"
+      :currentTheme="activeThemeId"
       @close="showCommandPalette = false"
       @open-create="openCreateModal"
       @open-ai="showAIDrawer = true"
@@ -1837,8 +2069,9 @@ onUnmounted(() => {
       @open-focus="handleStartFocus"
       @open-briefing="showDailyBriefing = true"
       @open-trash="showTrash = true"
-      @open-settings="showSettings = true"
+      @open-settings="openSettingsOnTab('appearance')"
       @open-shortcuts="showKeyboardShortcuts = true"
+      @open-solar-terms="showSolarTerms = true"
       @change-view="handleSidebarChangeView"
       @select-filter="handleSidebarSelectFilter"
       @toggle-overdue="handleSidebarToggleOverdue"
@@ -1847,9 +2080,20 @@ onUnmounted(() => {
       @export-ics="handleExportICS"
       @export-csv="handleExportCSV"
       @select-theme="handleSelectTheme"
+      @set-theme-mode="handleSetThemeMode"
+      @toggle-theme-polarity="handleToggleThemePolarity"
+      @cycle-theme="handleCycleTheme"
+      @cycle-canvas-intensity="handleCycleCanvasIntensity"
+      @select-custom-accent="handleSelectCustomAccent"
+      @reset-custom-accent="handleResetCustomAccent"
+      @toggle-high-contrast="handleToggleHighContrast"
+      @toggle-shanshui-serif="handleToggleShanshuiSerif"
       @edit-reminder="openEditModal"
       @copy-markdown="handleCopyMarkdown"
       @optimize-db="handleOptimizeDB"
+      @quick-create="handleQuickAdd"
+      @open-window="handleOpenWindow"
+      @open-desktop-settings="openSettingsOnTab('desktop')"
     />
 
     <!-- Trash Bin Modal (Round 30) -->
@@ -1906,7 +2150,7 @@ onUnmounted(() => {
 
 .workspace-subbar {
   position: relative;
-  z-index: 1;
+  z-index: 18;
   padding: 12px 24px 0;
   display: flex;
   flex-direction: column;
@@ -1934,5 +2178,13 @@ onUnmounted(() => {
 
 .agenda-app.compact-mode .main-content-scroll {
   padding: 8px 16px 24px;
+}
+
+#reminder-inspector-portal {
+  position: relative;
+  z-index: var(--z-overlay);
+  isolation: isolate;
+  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
 }
 </style>

@@ -8,6 +8,7 @@
 :root {
   color-scheme: dark;
   --font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --font-sans: var(--font-family);
   --font-display: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
   --font-mono: "Space Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
 
@@ -26,8 +27,12 @@
   --ink-on-lime: #07080a;
   --ink-on-accent: #07080a;
   --ink-on-success: #07080a;
+  --ink-on-danger: #ffffff;
+  --ink-on-warning: #07080a;
+  --font-shanshui-display: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
   --vermilion: #ff5a36;
   --vermilion-text: #ff9c84;
+  --seal-red: #e05246;
 
   --app-bg: #07080a;
   --sidebar-bg: #090b0f;
@@ -57,12 +62,16 @@
   --cta-bg: #f3f5f8;
   --cta-bg-hover: #ffffff;
   --cta-ink: #07080a;
+  --cta-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 
   --success: #00d294;
   --warning: #fcbb00;
   --danger: #ff6568;
   --info: #46b7ff;
 
+  --theme-secondary: #d9ff54;
+  --overlay-scrim: rgba(3, 5, 8, 0.72);
+  --highlight-edge: rgba(255, 255, 255, 0.08);
   --ambient-glow-1: rgba(70, 183, 255, 0.13);
   --ambient-glow-2: rgba(255, 139, 26, 0.085);
 
@@ -78,10 +87,13 @@
   --motion-fast: 130ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --motion-normal: 210ms cubic-bezier(0.22, 1, 0.36, 1);
   --z-sidebar: 20;
-  --z-header: 15;
+  --z-header: 30;
   --z-float: 80;
-  --z-overlay: 100;
-  --z-toast: 150;
+  --z-drawer: 95;
+  --z-overlay: 120;
+  --z-overlay-high: 160;
+  --z-command: 200;
+  --z-toast: 260;
 
   /* Compatibility aliases for feature components */
   --bg-base: var(--app-bg);
@@ -89,6 +101,8 @@
   --bg-layer-2: var(--surface-raised);
   --bg-layer-3: var(--surface-overlay);
   --bg-surface: var(--surface);
+  --surface-base: var(--surface);
+  --surface-card: var(--surface-raised);
   --bg-elevated: var(--surface-overlay);
   --bg-inset: var(--input-bg);
   --border-l1: var(--border-subtle);
@@ -106,6 +120,13 @@
   --state-info: var(--info);
   --shadow-panel: var(--shadow-sm);
   --shadow-float: var(--shadow-lg);
+}
+
+/* Shared Light Polarity Token Defaults */
+[data-color-scheme="light"] {
+  --overlay-scrim: rgba(15, 22, 34, 0.40);
+  --highlight-edge: rgba(255, 255, 255, 0.72);
+  --cta-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 18%, rgba(15, 23, 42, 0.14));
 }
 
 /* Scrolltide /ui "Project Roadmap" Stone Editorial Light Theme */
@@ -134,6 +155,7 @@
   --accent-border: rgba(0, 134, 209, 0.3);
   --accent-shadow: rgba(0, 134, 209, 0.18);
   --tide: #0086d1;
+  --tide-hover: #0070b3;
   --tide-text: #006dab;
   --lime: #d9ff54;
   --lime-strong: #4a6b00;
@@ -142,6 +164,7 @@
   --ink-on-success: #ffffff;
   --vermilion: #e43b18;
   --vermilion-text: #c92d0c;
+  --seal-red: #dc2626;
   --success: #047857;
   --warning: #b45309;
   --danger: #dc2626;
@@ -149,6 +172,11 @@
   --cta-bg: #111419;
   --cta-bg-hover: #242a34;
   --cta-ink: #f3f5f8;
+  --theme-secondary: #d9ff54;
+  --brand-primary: #0086d1;
+  --brand-light: #006dab;
+  --brand-dark: #005285;
+  --border-brand: rgba(0, 134, 209, 0.3);
   --ambient-glow-1: rgba(0, 134, 209, 0.06);
   --ambient-glow-2: rgba(164, 208, 0, 0.08);
   --shadow-xs: 0 1px 2px rgba(17, 20, 25, 0.06);
@@ -168,17 +196,31 @@
   --accent-border: rgba(0, 210, 239, 0.36);
   --accent-shadow: rgba(0, 150, 180, 0.25);
   --tide: #00d2ef;
+  --tide-hover: #53eafd;
   --tide-text: #6de8fa;
+  --lime: #00e8a8;
+  --lime-strong: #00d294;
+  --ink-on-accent: #061014;
+  --ink-on-lime: #061014;
+  --seal-red: #ff6b6b;
+  --theme-secondary: #00d294;
   --ambient-glow-1: rgba(0, 210, 239, 0.14);
   --ambient-glow-2: rgba(0, 210, 148, 0.08);
   --brand-primary: #00d2ef;
   --brand-light: #6de8fa;
+  --brand-dark: #0092a8;
   --fill-active: rgba(0, 210, 239, 0.14);
   --border-brand: rgba(0, 210, 239, 0.36);
 }
 
 /* Scrolltide "Ember" Warm Horizon */
 [data-theme="amber"] {
+  --app-bg: #0b0806;
+  --sidebar-bg: #0f0b08;
+  --surface: #15100c;
+  --surface-raised: #1b140f;
+  --surface-overlay: #221913;
+  --input-bg: #0d0a07;
   --accent: #ff8b1a;
   --accent-hover: #ffb96d;
   --accent-text: #ffbf78;
@@ -186,17 +228,31 @@
   --accent-border: rgba(255, 139, 26, 0.36);
   --accent-shadow: rgba(190, 92, 0, 0.24);
   --tide: #ff8b1a;
+  --tide-hover: #ffa84c;
   --tide-text: #ffbf78;
+  --lime: #ffd166;
+  --lime-strong: #f4b942;
+  --ink-on-accent: #140b03;
+  --ink-on-lime: #140b03;
+  --seal-red: #ff6347;
+  --theme-secondary: #46b7ff;
   --ambient-glow-1: rgba(255, 139, 26, 0.14);
   --ambient-glow-2: rgba(70, 183, 255, 0.08);
   --brand-primary: #ff8b1a;
   --brand-light: #ffbf78;
+  --brand-dark: #c96200;
   --fill-active: rgba(255, 139, 26, 0.14);
   --border-brand: rgba(255, 139, 26, 0.36);
 }
 
 /* Scrolltide "Orchid Swirl" Ultraviolet */
 [data-theme="aurora"] {
+  --app-bg: #09070d;
+  --sidebar-bg: #0c0912;
+  --surface: #120e1b;
+  --surface-raised: #171222;
+  --surface-overlay: #1d172b;
+  --input-bg: #0a0810;
   --accent: #a685ff;
   --accent-hover: #bc9fff;
   --accent-text: #cbb6ff;
@@ -204,13 +260,876 @@
   --accent-border: rgba(166, 133, 255, 0.36);
   --accent-shadow: rgba(120, 74, 230, 0.24);
   --tide: #a685ff;
+  --tide-hover: #bc9fff;
   --tide-text: #cbb6ff;
+  --lime: #ec6cff;
+  --lime-strong: #df54f5;
+  --ink-on-accent: #09070d;
+  --ink-on-lime: #09070d;
+  --seal-red: #fb7185;
+  --theme-secondary: #ec6cff;
   --ambient-glow-1: rgba(166, 133, 255, 0.14);
   --ambient-glow-2: rgba(236, 108, 255, 0.075);
   --brand-primary: #a685ff;
   --brand-light: #cbb6ff;
+  --brand-dark: #744ce6;
   --fill-active: rgba(166, 133, 255, 0.14);
   --border-brand: rgba(166, 133, 255, 0.36);
+}
+
+/* 中国山水美学 · 千里江山 · 宋韵宣纸 (Song-Dynasty Mineral Green/Blue on Aged Xuan Paper) */
+[data-theme="shanshui-jiangshan"] {
+  color-scheme: light;
+  --app-bg: #f4efe4;
+  --sidebar-bg: #ebe3d3;
+  --surface: #fcf9f2;
+  --surface-raised: #fffdf8;
+  --surface-overlay: #fffdf9;
+  --input-bg: #f7f2e8;
+  --glass-track-bg: rgba(31, 27, 22, 0.055);
+  --fill-subtle: rgba(31, 27, 22, 0.038);
+  --fill-hover: rgba(31, 27, 22, 0.07);
+  --fill-active: rgba(21, 106, 122, 0.115);
+  --border-subtle: rgba(58, 48, 36, 0.11);
+  --border-strong: rgba(58, 48, 36, 0.21);
+  --text-primary: #1f1b16;
+  --text-secondary: #4a4237;
+  --text-tertiary: #6d6356;
+  --text-quaternary: #968b7c;
+  --accent: #156a7a;
+  --accent-hover: #105562;
+  --accent-text: #0f5664;
+  --accent-soft: rgba(21, 106, 122, 0.11);
+  --accent-border: rgba(21, 106, 122, 0.32);
+  --accent-shadow: rgba(21, 106, 122, 0.18);
+  --tide: #156a7a;
+  --tide-hover: #1b8093;
+  --tide-text: #0f5664;
+  --lime: #3bb085;
+  --lime-strong: #1f7454;
+  --ink-on-lime: #0c1713;
+  --ink-on-accent: #fdfaf3;
+  --ink-on-success: #fdfaf3;
+  --vermilion: #c83c32;
+  --vermilion-text: #a52d25;
+  --seal-red: #c83c32;
+  --success: #1b7a56;
+  --warning: #b06412;
+  --danger: #c83c32;
+  --info: #156a7a;
+  --cta-bg: #1f1b16;
+  --cta-bg-hover: #352e26;
+  --cta-ink: #f8f4ea;
+  --ambient-glow-1: rgba(21, 106, 122, 0.09);
+  --ambient-glow-2: rgba(46, 139, 102, 0.095);
+  --brand-primary: #156a7a;
+  --brand-light: #0f5664;
+  --brand-dark: #0d444f;
+  --border-brand: rgba(21, 106, 122, 0.32);
+  --shadow-xs: 0 1px 2px rgba(42, 34, 24, 0.06);
+  --shadow-sm: 0 8px 24px rgba(42, 34, 24, 0.08);
+  --shadow-lg: 0 22px 58px rgba(42, 34, 24, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(42, 34, 24, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(42, 34, 24, 0.11);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(42, 34, 24, 0.16);
+}
+
+/* 中国山水美学 · 黄山云海松墨 (Huangshan Pine & Sea of Clouds) */
+[data-theme="shanshui-huangshan"] {
+  --app-bg: #080c0a;
+  --sidebar-bg: #0b100e;
+  --surface: #101714;
+  --surface-raised: #141d19;
+  --surface-overlay: #19251f;
+  --input-bg: #0a0e0c;
+  --fill-subtle: rgba(236, 246, 241, 0.038);
+  --fill-hover: rgba(236, 246, 241, 0.072);
+  --border-subtle: rgba(206, 232, 220, 0.095);
+  --border-strong: rgba(206, 232, 220, 0.185);
+  --text-primary: #eff7f3;
+  --text-secondary: #bccdc5;
+  --text-tertiary: #849a90;
+  --text-quaternary: #566b62;
+  --accent: #4cd98b;
+  --accent-hover: #6de6a4;
+  --accent-text: #94f0bd;
+  --accent-soft: rgba(76, 217, 139, 0.14);
+  --accent-border: rgba(76, 217, 139, 0.37);
+  --accent-shadow: rgba(30, 150, 88, 0.25);
+  --tide: #4cd98b;
+  --tide-hover: #6de6a4;
+  --tide-text: #94f0bd;
+  --lime: #dbeafe;
+  --lime-strong: #93c5fd;
+  --ink-on-accent: #080c0a;
+  --seal-red: #f87171;
+  --ambient-glow-1: rgba(76, 217, 139, 0.14);
+  --ambient-glow-2: rgba(219, 234, 254, 0.085);
+  --brand-primary: #4cd98b;
+  --brand-light: #94f0bd;
+  --brand-dark: #259e5c;
+  --fill-active: rgba(76, 217, 139, 0.14);
+  --border-brand: rgba(76, 217, 139, 0.37);
+}
+
+/* 中国山水美学 · 布达拉松烟翠微 */
+[data-theme="shanshui-potala"] {
+  --seal-red: #f26d5b;
+  --app-bg: #07100c;
+  --sidebar-bg: #091510;
+  --surface: #0e1c16;
+  --surface-raised: #12231c;
+  --surface-overlay: #162b22;
+  --input-bg: #09130f;
+  --fill-subtle: rgba(241, 251, 247, 0.038);
+  --fill-hover: rgba(241, 251, 247, 0.072);
+  --border-subtle: rgba(200, 248, 228, 0.095);
+  --border-strong: rgba(200, 248, 228, 0.185);
+  --text-primary: #f1fbf7;
+  --text-secondary: #b7d3c8;
+  --text-tertiary: #7fa395;
+  --text-quaternary: #537367;
+  --accent: #27cc93;
+  --accent-hover: #4be0ac;
+  --accent-text: #72edc2;
+  --accent-soft: rgba(39, 204, 147, 0.14);
+  --accent-border: rgba(39, 204, 147, 0.37);
+  --accent-shadow: rgba(16, 150, 104, 0.26);
+  --tide: #27cc93;
+  --tide-hover: #4be0ac;
+  --tide-text: #72edc2;
+  --lime: #f0cf65;
+  --lime-strong: #d9b13b;
+  --ink-on-accent: #07100c;
+  --ambient-glow-1: rgba(31, 184, 132, 0.15);
+  --ambient-glow-2: rgba(240, 207, 101, 0.08);
+  --brand-primary: #27cc93;
+  --brand-light: #72edc2;
+  --brand-dark: #149669;
+  --fill-active: rgba(39, 204, 147, 0.14);
+  --border-brand: rgba(39, 204, 147, 0.37);
+}
+
+/* 中国山水美学 · 桂林漓江烟雨赭岚 */
+[data-theme="shanshui-guilin"] {
+  --seal-red: #e85d56;
+  --app-bg: #110c08;
+  --sidebar-bg: #16100b;
+  --surface: #1d150e;
+  --surface-raised: #241a12;
+  --surface-overlay: #2b2016;
+  --input-bg: #130e09;
+  --fill-subtle: rgba(251, 244, 238, 0.038);
+  --fill-hover: rgba(251, 244, 238, 0.072);
+  --border-subtle: rgba(250, 222, 198, 0.095);
+  --border-strong: rgba(250, 222, 198, 0.185);
+  --text-primary: #fbf4ee;
+  --text-secondary: #d4c0b0;
+  --text-tertiary: #a18978;
+  --text-quaternary: #705c4e;
+  --accent: #ee8c52;
+  --accent-hover: #f7a675;
+  --accent-text: #ffbe96;
+  --accent-soft: rgba(238, 140, 82, 0.145);
+  --accent-border: rgba(238, 140, 82, 0.38);
+  --accent-shadow: rgba(188, 96, 42, 0.26);
+  --tide: #ee8c52;
+  --tide-hover: #f7a675;
+  --tide-text: #ffbe96;
+  --lime: #63dfc0;
+  --lime-strong: #3cc8a6;
+  --ink-on-accent: #110c08;
+  --ambient-glow-1: rgba(223, 126, 68, 0.16);
+  --ambient-glow-2: rgba(99, 223, 192, 0.08);
+  --brand-primary: #ee8c52;
+  --brand-light: #ffbe96;
+  --brand-dark: #c0622b;
+  --fill-active: rgba(238, 140, 82, 0.145);
+  --border-brand: rgba(238, 140, 82, 0.38);
+}
+
+/* 中国山水美学 · 长江三峡夔门靛蓝 */
+[data-theme="shanshui-sanxia"] {
+  --seal-red: #f06a6a;
+  --app-bg: #070b14;
+  --sidebar-bg: #090f1b;
+  --surface: #0e1625;
+  --surface-raised: #121d30;
+  --surface-overlay: #17243b;
+  --input-bg: #080d17;
+  --fill-subtle: rgba(241, 246, 254, 0.038);
+  --fill-hover: rgba(241, 246, 254, 0.072);
+  --border-subtle: rgba(196, 220, 255, 0.095);
+  --border-strong: rgba(196, 220, 255, 0.185);
+  --text-primary: #f1f6fe;
+  --text-secondary: #b9c8e0;
+  --text-tertiary: #8093b3;
+  --text-quaternary: #536585;
+  --accent: #529bff;
+  --accent-hover: #75b1ff;
+  --accent-text: #99c6ff;
+  --accent-soft: rgba(82, 155, 255, 0.145);
+  --accent-border: rgba(82, 155, 255, 0.38);
+  --accent-shadow: rgba(34, 108, 218, 0.28);
+  --tide: #529bff;
+  --tide-hover: #75b1ff;
+  --tide-text: #99c6ff;
+  --lime: #7ce8ff;
+  --lime-strong: #4ad4f5;
+  --ink-on-accent: #070b14;
+  --ambient-glow-1: rgba(59, 140, 255, 0.16);
+  --ambient-glow-2: rgba(124, 232, 255, 0.085);
+  --brand-primary: #529bff;
+  --brand-light: #99c6ff;
+  --brand-dark: #256dd4;
+  --fill-active: rgba(82, 155, 255, 0.145);
+  --border-brand: rgba(82, 155, 255, 0.38);
+}
+
+/* 中国山水美学 · 东岳泰山日出绛紫 */
+[data-theme="shanshui-taishan"] {
+  --seal-red: #f46b78;
+  --app-bg: #0e0814;
+  --sidebar-bg: #130b1b;
+  --surface: #191023;
+  --surface-raised: #20152d;
+  --surface-overlay: #271a36;
+  --input-bg: #100917;
+  --fill-subtle: rgba(248, 242, 253, 0.038);
+  --fill-hover: rgba(248, 242, 253, 0.072);
+  --border-subtle: rgba(228, 206, 255, 0.095);
+  --border-strong: rgba(228, 206, 255, 0.185);
+  --text-primary: #f8f2fd;
+  --text-secondary: #cbbcd9;
+  --text-tertiary: #9683aa;
+  --text-quaternary: #67557a;
+  --accent: #bc7ef2;
+  --accent-hover: #ce9df7;
+  --accent-text: #debaff;
+  --accent-soft: rgba(188, 126, 242, 0.145);
+  --accent-border: rgba(188, 126, 242, 0.38);
+  --accent-shadow: rgba(134, 72, 204, 0.26);
+  --tide: #bc7ef2;
+  --tide-hover: #ce9df7;
+  --tide-text: #debaff;
+  --lime: #f5bf6b;
+  --lime-strong: #e3a342;
+  --ink-on-accent: #0e0814;
+  --ambient-glow-1: rgba(181, 116, 238, 0.16);
+  --ambient-glow-2: rgba(245, 191, 107, 0.085);
+  --brand-primary: #bc7ef2;
+  --brand-light: #debaff;
+  --brand-dark: #8c4cc9;
+  --fill-active: rgba(188, 126, 242, 0.145);
+  --border-brand: rgba(188, 126, 242, 0.38);
+}
+
+/* 中国山水美学 · 杭州西湖三潭苔绿 */
+[data-theme="shanshui-xihu"] {
+  --seal-red: #ef6f6c;
+  --app-bg: #0a0f07;
+  --sidebar-bg: #0e140a;
+  --surface: #141c0e;
+  --surface-raised: #192412;
+  --surface-overlay: #1f2d16;
+  --input-bg: #0c1108;
+  --fill-subtle: rgba(244, 250, 238, 0.038);
+  --fill-hover: rgba(244, 250, 238, 0.072);
+  --border-subtle: rgba(218, 240, 192, 0.095);
+  --border-strong: rgba(218, 240, 192, 0.185);
+  --text-primary: #f4faee;
+  --text-secondary: #c2d1b6;
+  --text-tertiary: #8d9f7e;
+  --text-quaternary: #5f7052;
+  --accent: #9ec938;
+  --accent-hover: #b6dc5c;
+  --accent-text: #cce887;
+  --accent-soft: rgba(158, 201, 56, 0.14);
+  --accent-border: rgba(158, 201, 56, 0.37);
+  --accent-shadow: rgba(112, 152, 24, 0.25);
+  --tide: #9ec938;
+  --tide-hover: #b6dc5c;
+  --tide-text: #cce887;
+  --lime: #5ce0c4;
+  --lime-strong: #37c7a9;
+  --ink-on-accent: #0a0f07;
+  --ambient-glow-1: rgba(148, 191, 48, 0.15);
+  --ambient-glow-2: rgba(92, 224, 196, 0.08);
+  --brand-primary: #9ec938;
+  --brand-light: #cce887;
+  --brand-dark: #749a1e;
+  --fill-active: rgba(158, 201, 56, 0.14);
+  --border-brand: rgba(158, 201, 56, 0.37);
+}
+
+/* 中国山水美学 · 庐山飞瀑苍崖 (Lushan Waterfall Silver-Cyan on Mist Slate) */
+[data-theme="shanshui-lushan"] {
+  --app-bg: #080d11;
+  --sidebar-bg: #0b1117;
+  --surface: #101922;
+  --surface-raised: #14202b;
+  --surface-overlay: #1a2936;
+  --input-bg: #090f15;
+  --fill-subtle: rgba(232, 246, 255, 0.038);
+  --fill-hover: rgba(232, 246, 255, 0.072);
+  --border-subtle: rgba(190, 226, 246, 0.095);
+  --border-strong: rgba(190, 226, 246, 0.19);
+  --text-primary: #eef7fc;
+  --text-secondary: #bad0df;
+  --text-tertiary: #829cb0;
+  --text-quaternary: #536c7e;
+  --accent: #38d2e6;
+  --accent-hover: #62e1f2;
+  --accent-text: #8febf7;
+  --accent-soft: rgba(56, 210, 230, 0.14);
+  --accent-border: rgba(56, 210, 230, 0.38);
+  --accent-shadow: rgba(26, 152, 174, 0.26);
+  --tide: #38d2e6;
+  --tide-hover: #62e1f2;
+  --tide-text: #8febf7;
+  --lime: #7be078;
+  --lime-strong: #4bc548;
+  --ink-on-accent: #071014;
+  --seal-red: #ee6352;
+  --ambient-glow-1: rgba(56, 210, 230, 0.14);
+  --ambient-glow-2: rgba(123, 224, 120, 0.08);
+  --brand-primary: #38d2e6;
+  --brand-light: #8febf7;
+  --brand-dark: #1d9cb0;
+  --fill-active: rgba(56, 210, 230, 0.14);
+  --border-brand: rgba(56, 210, 230, 0.38);
+}
+
+/* 中国山水美学 · 江南烟雨徽宣 (Huizhou White-Wall Ink & Bamboo Teal Light Paper) */
+[data-theme="shanshui-jiangnan"] {
+  color-scheme: light;
+  --app-bg: #eef1ed;
+  --sidebar-bg: #e3e8e2;
+  --surface: #f8faf7;
+  --surface-raised: #fdfefd;
+  --surface-overlay: #ffffff;
+  --input-bg: #f1f4f0;
+  --glass-track-bg: rgba(24, 34, 32, 0.055);
+  --fill-subtle: rgba(24, 34, 32, 0.036);
+  --fill-hover: rgba(24, 34, 32, 0.068);
+  --fill-active: rgba(42, 123, 111, 0.115);
+  --border-subtle: rgba(34, 48, 44, 0.105);
+  --border-strong: rgba(34, 48, 44, 0.2);
+  --text-primary: #1a2321;
+  --text-secondary: #414e4a;
+  --text-tertiary: #667570;
+  --text-quaternary: #8d9b96;
+  --accent: #2a7b6f;
+  --accent-hover: #1f6459;
+  --accent-text: #1c5f54;
+  --accent-soft: rgba(42, 123, 111, 0.11);
+  --accent-border: rgba(42, 123, 111, 0.32);
+  --accent-shadow: rgba(42, 123, 111, 0.18);
+  --tide: #2a7b6f;
+  --tide-hover: #359183;
+  --tide-text: #1c5f54;
+  --lime: #4f9478;
+  --lime-strong: #2c6d54;
+  --ink-on-lime: #0b1612;
+  --ink-on-accent: #f7faf8;
+  --ink-on-success: #f7faf8;
+  --vermilion: #c44138;
+  --vermilion-text: #9e3129;
+  --seal-red: #c44138;
+  --success: #217a56;
+  --warning: #a86218;
+  --danger: #c44138;
+  --info: #2a7b6f;
+  --cta-bg: #1a2321;
+  --cta-bg-hover: #2d3b38;
+  --cta-ink: #f7faf8;
+  --ambient-glow-1: rgba(42, 123, 111, 0.09);
+  --ambient-glow-2: rgba(140, 74, 94, 0.075);
+  --brand-primary: #2a7b6f;
+  --brand-light: #1c5f54;
+  --brand-dark: #154940;
+  --border-brand: rgba(42, 123, 111, 0.32);
+  --shadow-xs: 0 1px 2px rgba(24, 34, 30, 0.06);
+  --shadow-sm: 0 8px 24px rgba(24, 34, 30, 0.08);
+  --shadow-lg: 0 22px 58px rgba(24, 34, 30, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(24, 34, 30, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(24, 34, 30, 0.1);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(24, 34, 30, 0.15);
+}
+
+/* 中国山水美学 · 峨眉金顶云海 (Emei Golden Summit Amber & Misty Emerald Ink) */
+[data-theme="shanshui-emei"] {
+  --app-bg: #080d0c;
+  --sidebar-bg: #0b1210;
+  --surface: #111b19;
+  --surface-raised: #162220;
+  --surface-overlay: #1c2c29;
+  --input-bg: #0a100f;
+  --fill-subtle: rgba(240, 248, 244, 0.04);
+  --fill-hover: rgba(240, 248, 244, 0.075);
+  --border-subtle: rgba(226, 224, 198, 0.1);
+  --border-strong: rgba(226, 224, 198, 0.2);
+  --text-primary: #f7f5ee;
+  --text-secondary: #cec8b8;
+  --text-tertiary: #949080;
+  --text-quaternary: #615e52;
+  --accent: #eab354;
+  --accent-hover: #f5c674;
+  --accent-text: #f9d896;
+  --accent-soft: rgba(234, 179, 84, 0.14);
+  --accent-border: rgba(234, 179, 84, 0.38);
+  --accent-shadow: rgba(188, 134, 42, 0.26);
+  --tide: #4dd4b0;
+  --tide-hover: #70e4c6;
+  --tide-text: #97f0d9;
+  --lime: #eab354;
+  --lime-strong: #d49635;
+  --ink-on-accent: #141008;
+  --seal-red: #eb6752;
+  --ambient-glow-1: rgba(234, 179, 84, 0.13);
+  --ambient-glow-2: rgba(77, 212, 176, 0.11);
+  --brand-primary: #eab354;
+  --brand-light: #f9d896;
+  --brand-dark: #b98225;
+  --fill-active: rgba(77, 212, 176, 0.14);
+  --border-brand: rgba(234, 179, 84, 0.38);
+}
+
+/* 中国山水美学 · 敦煌鸣沙霁宣 (Dunhuang Mingsha Warm Xuan Paper & Mogao Malachite) */
+[data-theme="shanshui-dunhuang"] {
+  color-scheme: light;
+  --app-bg: #f5efe2;
+  --sidebar-bg: #ebe2d0;
+  --surface: #fcf8ef;
+  --surface-raised: #fffdf7;
+  --surface-overlay: #fffdf9;
+  --input-bg: #f7f1e3;
+  --glass-track-bg: rgba(46, 36, 22, 0.055);
+  --fill-subtle: rgba(46, 36, 22, 0.036);
+  --fill-hover: rgba(46, 36, 22, 0.068);
+  --fill-active: rgba(38, 122, 107, 0.115);
+  --border-subtle: rgba(72, 54, 34, 0.11);
+  --border-strong: rgba(72, 54, 34, 0.21);
+  --text-primary: #251d14;
+  --text-secondary: #514232;
+  --text-tertiary: #786653;
+  --text-quaternary: #a08e7a;
+  --accent: #267a6b;
+  --accent-hover: #1c6154;
+  --accent-text: #185b4f;
+  --accent-soft: rgba(38, 122, 107, 0.11);
+  --accent-border: rgba(38, 122, 107, 0.32);
+  --accent-shadow: rgba(38, 122, 107, 0.18);
+  --tide: #267a6b;
+  --tide-hover: #309280;
+  --tide-text: #185b4f;
+  --lime: #c98632;
+  --lime-strong: #9f6118;
+  --ink-on-lime: #191005;
+  --ink-on-accent: #fcf8ef;
+  --ink-on-success: #fcf8ef;
+  --vermilion: #c44634;
+  --vermilion-text: #9d3223;
+  --seal-red: #c44634;
+  --success: #207655;
+  --warning: #ad6515;
+  --danger: #c44634;
+  --info: #267a6b;
+  --cta-bg: #251d14;
+  --cta-bg-hover: #3d3123;
+  --cta-ink: #fcf8ef;
+  --ambient-glow-1: rgba(38, 122, 107, 0.09);
+  --ambient-glow-2: rgba(184, 74, 57, 0.085);
+  --brand-primary: #267a6b;
+  --brand-light: #185b4f;
+  --brand-dark: #14493f;
+  --border-brand: rgba(38, 122, 107, 0.32);
+  --shadow-xs: 0 1px 2px rgba(46, 36, 22, 0.06);
+  --shadow-sm: 0 8px 24px rgba(46, 36, 22, 0.08);
+  --shadow-lg: 0 22px 58px rgba(46, 36, 22, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(46, 36, 22, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(46, 36, 22, 0.11);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(46, 36, 22, 0.16);
+}
+
+/* 中国山水美学 · 九寨彩池碧琉 (Jiuzhaigou Mineral Jade & Travertine Gold) */
+[data-theme="shanshui-jiuzhaigou"] {
+  --app-bg: #070d10;
+  --sidebar-bg: #091115;
+  --surface: #0e1a20;
+  --surface-raised: #13222a;
+  --surface-overlay: #182b34;
+  --input-bg: #091216;
+  --fill-subtle: rgba(226, 248, 246, 0.04);
+  --fill-hover: rgba(226, 248, 246, 0.075);
+  --border-subtle: rgba(188, 240, 234, 0.1);
+  --border-strong: rgba(188, 240, 234, 0.2);
+  --text-primary: #eefaf9;
+  --text-secondary: #bad5d2;
+  --text-tertiary: #80a19e;
+  --text-quaternary: #53716e;
+  --accent: #2cd4c4;
+  --accent-hover: #53e4d6;
+  --accent-text: #83efe5;
+  --accent-soft: rgba(44, 212, 196, 0.14);
+  --accent-border: rgba(44, 212, 196, 0.38);
+  --accent-shadow: rgba(18, 146, 134, 0.26);
+  --tide: #2cd4c4;
+  --tide-hover: #53e4d6;
+  --tide-text: #83efe5;
+  --lime: #f2c96d;
+  --lime-strong: #ecc058;
+  --ink-on-accent: #070d10;
+  --seal-red: #ee6a59;
+  --ambient-glow-1: rgba(44, 212, 196, 0.14);
+  --ambient-glow-2: rgba(242, 201, 109, 0.085);
+  --brand-primary: #2cd4c4;
+  --brand-light: #83efe5;
+  --brand-dark: #158b80;
+  --fill-active: rgba(44, 212, 196, 0.14);
+  --border-brand: rgba(44, 212, 196, 0.38);
+}
+
+/* 中国山水美学 · 姑苏园林竹影月洞 (Suzhou Garden Celadon Xuan Paper & Ink Bamboo) */
+[data-theme="shanshui-suzhou"] {
+  color-scheme: light;
+  --app-bg: #f1f4ee;
+  --sidebar-bg: #e5eae0;
+  --surface: #fafcf8;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --input-bg: #f3f6f0;
+  --glass-track-bg: rgba(30, 42, 34, 0.055);
+  --fill-subtle: rgba(30, 42, 34, 0.036);
+  --fill-hover: rgba(30, 42, 34, 0.068);
+  --fill-active: rgba(35, 110, 86, 0.115);
+  --border-subtle: rgba(44, 62, 50, 0.11);
+  --border-strong: rgba(44, 62, 50, 0.21);
+  --text-primary: #1a241d;
+  --text-secondary: #415146;
+  --text-tertiary: #66776b;
+  --text-quaternary: #90a095;
+  --accent: #236e56;
+  --accent-hover: #195642;
+  --accent-text: #16513e;
+  --accent-soft: rgba(35, 110, 86, 0.11);
+  --accent-border: rgba(35, 110, 86, 0.32);
+  --accent-shadow: rgba(35, 110, 86, 0.18);
+  --tide: #236e56;
+  --tide-hover: #2d876a;
+  --tide-text: #16513e;
+  --lime: #566c80;
+  --lime-strong: #3e5265;
+  --ink-on-lime: #f6f9f4;
+  --ink-on-accent: #fafcf8;
+  --ink-on-success: #fafcf8;
+  --vermilion: #c13e34;
+  --vermilion-text: #9a2b23;
+  --seal-red: #c13e34;
+  --success: #1c7854;
+  --warning: #a86416;
+  --danger: #c13e34;
+  --info: #236e56;
+  --cta-bg: #1a241d;
+  --cta-bg-hover: #2c3b31;
+  --cta-ink: #fafcf8;
+  --ambient-glow-1: rgba(35, 110, 86, 0.09);
+  --ambient-glow-2: rgba(86, 108, 128, 0.085);
+  --brand-primary: #236e56;
+  --brand-light: #16513e;
+  --brand-dark: #103d2e;
+  --border-brand: rgba(35, 110, 86, 0.32);
+  --shadow-xs: 0 1px 2px rgba(26, 36, 29, 0.06);
+  --shadow-sm: 0 8px 24px rgba(26, 36, 29, 0.08);
+  --shadow-lg: 0 22px 58px rgba(26, 36, 29, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(26, 36, 29, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(26, 36, 29, 0.11);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(26, 36, 29, 0.16);
+}
+
+/* 中国山水美学 · 武陵丹崖云柱 (Zhangjiajie Sandstone Peaks & Mist Slate) */
+[data-theme="shanshui-zhangjiajie"] {
+  --app-bg: #0c0a0b;
+  --sidebar-bg: #110e0f;
+  --surface: #181315;
+  --surface-raised: #1e181b;
+  --surface-overlay: #261e22;
+  --input-bg: #0f0c0d;
+  --fill-subtle: rgba(249, 236, 229, 0.04);
+  --fill-hover: rgba(249, 236, 229, 0.075);
+  --border-subtle: rgba(235, 206, 192, 0.1);
+  --border-strong: rgba(235, 206, 192, 0.19);
+  --text-primary: #fbf2ee;
+  --text-secondary: #d4bfb6;
+  --text-tertiary: #9e877e;
+  --text-quaternary: #6c5952;
+  --accent: #e57c4b;
+  --accent-hover: #f0956a;
+  --accent-text: #f7b392;
+  --accent-soft: rgba(229, 124, 75, 0.145);
+  --accent-border: rgba(229, 124, 75, 0.39);
+  --accent-shadow: rgba(185, 86, 40, 0.26);
+  --tide: #e57c4b;
+  --tide-hover: #f0956a;
+  --tide-text: #f7b392;
+  --lime: #5bc8ba;
+  --lime-strong: #4ad8c7;
+  --ink-on-accent: #0c0a0b;
+  --seal-red: #ee6055;
+  --ambient-glow-1: rgba(229, 124, 75, 0.14);
+  --ambient-glow-2: rgba(91, 200, 186, 0.085);
+  --brand-primary: #e57c4b;
+  --brand-light: #f7b392;
+  --brand-dark: #ae5127;
+  --fill-active: rgba(229, 124, 75, 0.145);
+  --border-brand: rgba(229, 124, 75, 0.39);
+}
+
+/* 中国山水美学 · 长白天池雪霁 (Changbai Snow-Frost Xuan Paper & Crater Cobalt) */
+[data-theme="shanshui-changbai"] {
+  color-scheme: light;
+  --app-bg: #eff3f8;
+  --sidebar-bg: #e4eaf3;
+  --surface: #f9fbfe;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --input-bg: #f3f6fb;
+  --glass-track-bg: rgba(22, 34, 54, 0.055);
+  --fill-subtle: rgba(22, 34, 54, 0.036);
+  --fill-hover: rgba(22, 34, 54, 0.068);
+  --fill-active: rgba(27, 95, 168, 0.115);
+  --border-subtle: rgba(38, 56, 82, 0.11);
+  --border-strong: rgba(38, 56, 82, 0.21);
+  --text-primary: #162030;
+  --text-secondary: #3c4b62;
+  --text-tertiary: #627289;
+  --text-quaternary: #8d9cb1;
+  --accent: #1b5fa8;
+  --accent-hover: #144a85;
+  --accent-text: #124680;
+  --accent-soft: rgba(27, 95, 168, 0.11);
+  --accent-border: rgba(27, 95, 168, 0.32);
+  --accent-shadow: rgba(27, 95, 168, 0.18);
+  --tide: #1b5fa8;
+  --tide-hover: #2573c7;
+  --tide-text: #124680;
+  --lime: #3b9b8e;
+  --lime-strong: #237569;
+  --ink-on-lime: #f6fbff;
+  --ink-on-accent: #f9fbfe;
+  --ink-on-success: #f9fbfe;
+  --vermilion: #c8423a;
+  --vermilion-text: #9f2d27;
+  --seal-red: #c8423a;
+  --success: #1d7a64;
+  --warning: #b06716;
+  --danger: #c8423a;
+  --info: #1b5fa8;
+  --cta-bg: #162030;
+  --cta-bg-hover: #263650;
+  --cta-ink: #f9fbfe;
+  --ambient-glow-1: rgba(27, 95, 168, 0.09);
+  --ambient-glow-2: rgba(59, 155, 142, 0.085);
+  --brand-primary: #1b5fa8;
+  --brand-light: #124680;
+  --brand-dark: #0e3866;
+  --border-brand: rgba(27, 95, 168, 0.32);
+  --shadow-xs: 0 1px 2px rgba(22, 34, 54, 0.06);
+  --shadow-sm: 0 8px 24px rgba(22, 34, 54, 0.08);
+  --shadow-lg: 0 22px 58px rgba(22, 34, 54, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(22, 34, 54, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(22, 34, 54, 0.11);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(22, 34, 54, 0.16);
+}
+
+/* 中国山水美学 · 汝窑雨过天青宣 (Song Ru-Ware Celadon Xuan Paper Light Theme) */
+[data-theme="shanshui-tianqing"] {
+  color-scheme: light;
+  --app-bg: #ebf2f1;
+  --sidebar-bg: #dfe9e7;
+  --surface: #f7fbfa;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --input-bg: #eff6f5;
+  --glass-track-bg: rgba(24, 52, 56, 0.055);
+  --fill-subtle: rgba(24, 52, 56, 0.036);
+  --fill-hover: rgba(24, 52, 56, 0.068);
+  --fill-active: rgba(45, 126, 138, 0.115);
+  --border-subtle: rgba(34, 68, 72, 0.11);
+  --border-strong: rgba(34, 68, 72, 0.21);
+  --text-primary: #162629;
+  --text-secondary: #395054;
+  --text-tertiary: #5d7579;
+  --text-quaternary: #879ea2;
+  --accent: #2d7e8a;
+  --accent-hover: #21646e;
+  --accent-text: #1b5a63;
+  --accent-soft: rgba(45, 126, 138, 0.11);
+  --accent-border: rgba(45, 126, 138, 0.32);
+  --accent-shadow: rgba(45, 126, 138, 0.18);
+  --tide: #2d7e8a;
+  --tide-hover: #3693a1;
+  --tide-text: #1b5a63;
+  --lime: #489d86;
+  --lime-strong: #276e5c;
+  --ink-on-lime: #f7fbfa;
+  --ink-on-accent: #f7fbfa;
+  --ink-on-success: #f7fbfa;
+  --vermilion: #c64838;
+  --vermilion-text: #9d3023;
+  --seal-red: #c64838;
+  --success: #1d7a5e;
+  --warning: #ad6516;
+  --danger: #c64838;
+  --info: #2d7e8a;
+  --cta-bg: #162629;
+  --cta-bg-hover: #273f44;
+  --cta-ink: #f7fbfa;
+  --ambient-glow-1: rgba(45, 126, 138, 0.095);
+  --ambient-glow-2: rgba(72, 157, 134, 0.085);
+  --brand-primary: #2d7e8a;
+  --brand-light: #1b5a63;
+  --brand-dark: #15464d;
+  --border-brand: rgba(45, 126, 138, 0.32);
+  --shadow-xs: 0 1px 2px rgba(22, 38, 41, 0.06);
+  --shadow-sm: 0 8px 24px rgba(22, 38, 41, 0.08);
+  --shadow-lg: 0 22px 58px rgba(22, 38, 41, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(22, 38, 41, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(22, 38, 41, 0.11);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(22, 38, 41, 0.16);
+}
+
+/* 中国山水美学 · 栖霞霜叶流丹宣 (Qixia Autumn Maple Ivory Paper Light Theme) */
+[data-theme="shanshui-qixia"] {
+  color-scheme: light;
+  --app-bg: #f9f1e9;
+  --sidebar-bg: #efe3d7;
+  --surface: #fffaf5;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --input-bg: #fbf3ec;
+  --glass-track-bg: rgba(58, 34, 24, 0.055);
+  --fill-subtle: rgba(58, 34, 24, 0.036);
+  --fill-hover: rgba(58, 34, 24, 0.068);
+  --fill-active: rgba(184, 68, 42, 0.11);
+  --border-subtle: rgba(78, 44, 30, 0.11);
+  --border-strong: rgba(78, 44, 30, 0.21);
+  --text-primary: #2a1a14;
+  --text-secondary: #563d33;
+  --text-tertiary: #7d6155;
+  --text-quaternary: #a48a7e;
+  --accent: #b8442a;
+  --accent-hover: #96331d;
+  --accent-text: #8c2e19;
+  --accent-soft: rgba(184, 68, 42, 0.11);
+  --accent-border: rgba(184, 68, 42, 0.32);
+  --accent-shadow: rgba(184, 68, 42, 0.18);
+  --tide: #b8442a;
+  --tide-hover: #cc5236;
+  --tide-text: #8c2e19;
+  --lime: #d19026;
+  --lime-strong: #9c6a12;
+  --ink-on-lime: #231407;
+  --ink-on-accent: #fffaf5;
+  --ink-on-success: #fffaf5;
+  --vermilion: #c43b2b;
+  --vermilion-text: #972518;
+  --seal-red: #c43b2b;
+  --success: #266e56;
+  --warning: #a85e10;
+  --danger: #c43b2b;
+  --info: #266e66;
+  --cta-bg: #2a1a14;
+  --cta-bg-hover: #422a21;
+  --cta-ink: #fffaf5;
+  --ambient-glow-1: rgba(184, 68, 42, 0.09);
+  --ambient-glow-2: rgba(156, 106, 18, 0.09);
+  --brand-primary: #b8442a;
+  --brand-light: #8c2e19;
+  --brand-dark: #702312;
+  --border-brand: rgba(184, 68, 42, 0.32);
+  --shadow-xs: 0 1px 2px rgba(52, 28, 18, 0.06);
+  --shadow-sm: 0 8px 24px rgba(52, 28, 18, 0.08);
+  --shadow-lg: 0 22px 58px rgba(52, 28, 18, 0.16);
+  --glass-track-shadow: inset 0 1px 2px rgba(52, 28, 18, 0.08);
+  --glass-lens-shadow: 0 2px 8px rgba(52, 28, 18, 0.11);
+  --glass-lens-shadow-stretch: 0 4px 12px rgba(52, 28, 18, 0.16);
+}
+
+/* 中国山水美学 · 苍山洱海风花澄碧 (Cangshan Indigo Ink & Erhai Azure Reflection) */
+[data-theme="shanshui-erhai"] {
+  --app-bg: #060c13;
+  --sidebar-bg: #08101a;
+  --surface: #0d1724;
+  --surface-raised: #111f30;
+  --surface-overlay: #16273c;
+  --input-bg: #080f18;
+  --fill-subtle: rgba(226, 242, 255, 0.04);
+  --fill-hover: rgba(226, 242, 255, 0.075);
+  --border-subtle: rgba(176, 222, 255, 0.1);
+  --border-strong: rgba(176, 222, 255, 0.2);
+  --text-primary: #eef6ff;
+  --text-secondary: #b6cde2;
+  --text-tertiary: #7f9bb8;
+  --text-quaternary: #536f8c;
+  --accent: #38bdf8;
+  --accent-hover: #60cdff;
+  --accent-text: #8ce0ff;
+  --accent-soft: rgba(56, 189, 248, 0.145);
+  --accent-border: rgba(56, 189, 248, 0.38);
+  --accent-shadow: rgba(24, 132, 198, 0.28);
+  --tide: #38bdf8;
+  --tide-hover: #60cdff;
+  --tide-text: #8ce0ff;
+  --lime: #7be4d0;
+  --lime-strong: #53d3bc;
+  --ink-on-accent: #060c13;
+  --seal-red: #f06a5c;
+  --ambient-glow-1: rgba(56, 189, 248, 0.14);
+  --ambient-glow-2: rgba(123, 228, 208, 0.085);
+  --brand-primary: #38bdf8;
+  --brand-light: #8ce0ff;
+  --brand-dark: #1982c4;
+  --fill-active: rgba(56, 189, 248, 0.145);
+  --border-brand: rgba(56, 189, 248, 0.38);
+}
+
+/* 中国山水美学 · 青城幽篁道韵 (Qingcheng Deep Bamboo Ink & Ginkgo Gold) */
+[data-theme="shanshui-qingcheng"] {
+  --app-bg: #070e0b;
+  --sidebar-bg: #0a1410;
+  --surface: #0f1d17;
+  --surface-raised: #14261e;
+  --surface-overlay: #192f25;
+  --input-bg: #09120e;
+  --fill-subtle: rgba(232, 248, 239, 0.04);
+  --fill-hover: rgba(232, 248, 239, 0.075);
+  --border-subtle: rgba(190, 235, 208, 0.1);
+  --border-strong: rgba(190, 235, 208, 0.2);
+  --text-primary: #eff9f3;
+  --text-secondary: #bad4c6;
+  --text-tertiary: #819e8f;
+  --text-quaternary: #536e61;
+  --accent: #3ecf8e;
+  --accent-hover: #62dfa8;
+  --accent-text: #8cecc2;
+  --accent-soft: rgba(62, 207, 142, 0.14);
+  --accent-border: rgba(62, 207, 142, 0.38);
+  --accent-shadow: rgba(24, 144, 92, 0.26);
+  --tide: #3ecf8e;
+  --tide-hover: #62dfa8;
+  --tide-text: #8cecc2;
+  --lime: #e8c55a;
+  --lime-strong: #d4ad3e;
+  --ink-on-accent: #070e0b;
+  --seal-red: #e96754;
+  --ambient-glow-1: rgba(62, 207, 142, 0.14);
+  --ambient-glow-2: rgba(232, 197, 90, 0.085);
+  --brand-primary: #3ecf8e;
+  --brand-light: #8cecc2;
+  --brand-dark: #1f8e5e;
+  --fill-active: rgba(62, 207, 142, 0.14);
+  --border-brand: rgba(62, 207, 142, 0.38);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -223,14 +1142,33 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+html[data-theme-switching="true"] .agenda-app,
+html[data-theme-switching="true"] .agenda-app *,
+html[data-theme-switching="true"] .agenda-app *::before,
+html[data-theme-switching="true"] .agenda-app *::after {
+  transition-property: background-color, border-color, color, box-shadow, fill, stroke !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme-switching="true"] .agenda-app,
+  html[data-theme-switching="true"] .agenda-app *,
+  html[data-theme-switching="true"] .agenda-app *::before,
+  html[data-theme-switching="true"] .agenda-app *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
 button, input, textarea, select { font: inherit; }
 button, input, textarea, select, a, [role="button"], [role="tab"] { --wails-draggable: no-drag; -webkit-app-region: no-drag; }
 input, textarea, .select-text, .markdown-body, .inspector-notes-box { user-select: text; -webkit-user-select: text; }
 ::selection { background: color-mix(in srgb, var(--tide) 28%, transparent); color: var(--text-primary); }
+:is([data-theme^="shanshui-"], [data-theme-group="shanshui"]) ::selection { background: color-mix(in srgb, var(--seal-red) 24%, color-mix(in srgb, var(--tide) 30%, transparent)); color: var(--text-primary); }
 :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 ::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 99px; background: color-mix(in srgb, var(--text-quaternary) 42%, transparent); background-clip: padding-box; }
+:is([data-theme^="shanshui-"], [data-theme-group="shanshui"]) ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--tide) 30%, var(--text-quaternary)); background-clip: padding-box; }
+[data-color-scheme="light"] ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-tertiary) 36%, transparent); background-clip: padding-box; }
 kbd { font-family: var(--font-mono); }
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
@@ -243,18 +1181,65 @@ kbd { font-family: var(--font-mono); }
   background-size: 100% 100%, 100% 100%, 24px 24px;
 }
 
-[data-theme="daylight"] .bg-dot-matrix {
+[data-color-scheme="light"] .bg-dot-matrix {
   background-image:
     radial-gradient(60% 50% at 15% 5%, var(--ambient-glow-2), transparent 65%),
     radial-gradient(55% 50% at 88% 12%, var(--ambient-glow-1), transparent 65%),
     radial-gradient(rgba(17, 20, 25, 0.065) 0.75px, transparent 0.75px);
 }
 
+/* 中国山水美学：山岚雾霭水墨双晕与细宣纸纹理（柔和留白，取代冷硬网点） */
+:is([data-theme^="shanshui-"], [data-theme-group="shanshui"]) .bg-dot-matrix {
+  background-image:
+    radial-gradient(75% 60% at 14% 6%, var(--ambient-glow-2), transparent 68%),
+    radial-gradient(68% 58% at 88% 10%, var(--ambient-glow-1), transparent 66%),
+    radial-gradient(46% 35% at 50% 96%, color-mix(in srgb, var(--seal-red) 5%, transparent), transparent 72%),
+    radial-gradient(120% 85% at 50% 50%, transparent 62%, rgba(0, 0, 0, 0.22) 100%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.008) 0px,
+      rgba(255, 255, 255, 0.008) 1px,
+      transparent 1px,
+      transparent 28px
+    );
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 28px 28px;
+}
+
+:is([data-theme^="shanshui-"], [data-theme-group="shanshui"])[data-color-scheme="light"] .bg-dot-matrix {
+  background-image:
+    radial-gradient(75% 60% at 14% 6%, var(--ambient-glow-2), transparent 68%),
+    radial-gradient(68% 58% at 88% 10%, var(--ambient-glow-1), transparent 66%),
+    radial-gradient(46% 35% at 50% 96%, color-mix(in srgb, var(--seal-red) 5%, transparent), transparent 72%),
+    radial-gradient(125% 90% at 50% 50%, transparent 64%, rgba(58, 48, 36, 0.055) 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(58, 48, 36, 0.015) 0px,
+      rgba(58, 48, 36, 0.015) 1px,
+      transparent 1px,
+      transparent 26px
+    );
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 26px 26px;
+}
+
+/* 环境画布与宣纸纹理浓度调节 (off / subtle / balanced / vivid) */
+[data-canvas-intensity="off"] .bg-dot-matrix {
+  background-image: none;
+}
+[data-canvas-intensity="off"] .tide-swirl-canvas {
+  opacity: 0 !important;
+}
+[data-canvas-intensity="subtle"] .bg-dot-matrix {
+  opacity: 0.56;
+}
+[data-canvas-intensity="vivid"] .bg-dot-matrix {
+  filter: saturate(1.18);
+}
+
+/* Scrolltide Signal Corner Crosshair Reticles */
 .bg-crosshair-grid, .bg-orthogonal-grid, .bg-linear-grid, .bg-isometric-diamond, .bg-blueprint-diagonal {
   background-image: none;
 }
 
-/* Scrolltide Signal Corner Crosshair Reticles */
 .st-reticle::before,
 .st-reticle::after {
   content: "+";
@@ -267,6 +1252,56 @@ kbd { font-family: var(--font-mono); }
 }
 .st-reticle::before { top: 4px; left: 6px; }
 .st-reticle::after { bottom: 4px; right: 6px; }
+
+/* 中国山水美学：雅致宣纸方角印与朱砂闲章组件（置于基础 reticle 之后确保干净层叠） */
+[data-theme^="shanshui-"] .st-reticle::before {
+  content: "⌜";
+  font-size: 10px;
+  color: var(--seal-red);
+  opacity: 0.38;
+}
+[data-theme^="shanshui-"] .st-reticle::after {
+  content: "⌟";
+  font-size: 10px;
+  color: var(--tide-text);
+  opacity: 0.32;
+}
+
+.shanshui-seal {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--seal-red, #e05246) 72%, transparent);
+  background: color-mix(in srgb, var(--seal-red, #e05246) 16%, transparent);
+  color: var(--seal-red, #e05246);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--seal-red, #e05246) 35%, transparent);
+  transition: transform var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+button:hover .shanshui-seal,
+.shanshui-picker-btn:hover .shanshui-seal {
+  transform: rotate(-3deg) scale(1.04);
+}
+
+.shanshui-seal.baiwen {
+  background: var(--seal-red, #c83c32);
+  border-color: color-mix(in srgb, var(--seal-red, #c83c32) 85%, #000);
+  color: #fdf8f2;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--seal-red, #c83c32) 32%, transparent);
+}
+
+.shanshui-seal.oval {
+  border-radius: 999px;
+  padding: 0 5px;
+  font-size: 9.5px;
+}
 
 .glass-panel, .glass-pill {
   border: 1px solid var(--border-subtle);
@@ -308,46 +1343,50 @@ kbd { font-family: var(--font-mono); }
   font-weight: 700;
   letter-spacing: -0.01em;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--cta-shadow);
   transition: background var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast);
 }
 .primary-btn:hover {
   background: var(--cta-bg-hover);
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 16px var(--accent-soft);
+  box-shadow: var(--cta-shadow), 0 0 16px var(--accent-soft);
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 22px;
-  padding: 2px 7px;
+  min-height: 20px;
+  padding: 1px 7px;
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   background: var(--fill-subtle);
   color: var(--text-tertiary);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 550;
   line-height: 1.3;
   white-space: nowrap;
 }
 .chip-repeat { color: var(--lime-strong); background: color-mix(in srgb, var(--lime) 14%, transparent); border-color: color-mix(in srgb, var(--lime) 30%, transparent); }
-.chip-range, .chip-link { color: var(--tide-text); background: color-mix(in srgb, var(--tide) 11%, transparent); border-color: color-mix(in srgb, var(--tide) 24%, transparent); }
-.chip-notes { max-width: 180px; overflow: hidden; color: var(--text-tertiary); text-overflow: ellipsis; }
-.chip-countdown, .chip-lead { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); border-color: color-mix(in srgb, var(--success) 26%, transparent); }
-.chip-near, .chip-urgent { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.chip-range, .chip-link { color: var(--tide-text); background: color-mix(in srgb, var(--tide) 10%, transparent); border-color: color-mix(in srgb, var(--tide) 22%, transparent); text-decoration: none; transition: background var(--motion-fast), border-color var(--motion-fast); }
+.chip-link:hover { background: color-mix(in srgb, var(--tide) 18%, transparent); border-color: color-mix(in srgb, var(--tide) 36%, transparent); }
+.chip-subtask { color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); border-color: color-mix(in srgb, var(--success) 24%, transparent); font-weight: 600; transition: border-color var(--motion-fast), background var(--motion-fast); }
+.chip-subtask:hover, .chip-subtask.expanded { background: color-mix(in srgb, var(--success) 18%, transparent); border-color: color-mix(in srgb, var(--success) 42%, transparent); color: var(--text-primary); }
+.chip-countdown, .chip-lead { color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); border-color: color-mix(in srgb, var(--success) 24%, transparent); }
+.chip-near, .chip-urgent { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); border-color: color-mix(in srgb, var(--danger) 28%, transparent); }
 .chip-paused { color: var(--warning); background: rgba(252, 187, 0, 0.1); border-color: rgba(252, 187, 0, 0.24); }
+.chip-expired { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .chip-ended { color: var(--text-quaternary); text-decoration: line-through; }
 
-[data-theme="daylight"] .chip-repeat { color: var(--lime-strong); background: color-mix(in srgb, var(--lime) 24%, transparent); border-color: color-mix(in srgb, var(--lime-strong) 28%, transparent); }
-[data-theme="daylight"] .agenda-app .tag-badge,
-[data-theme="daylight"] .agenda-app .preview-tag,
-[data-theme="daylight"] .agenda-app .matrix-tags span { filter: contrast(1.18) brightness(0.72) saturate(1.3); }
+[data-color-scheme="light"] .chip-repeat { color: var(--lime-strong); background: color-mix(in srgb, var(--lime) 24%, transparent); border-color: color-mix(in srgb, var(--lime-strong) 28%, transparent); }
+[data-color-scheme="light"] .agenda-app .tag-badge,
+[data-color-scheme="light"] .agenda-app .preview-tag,
+[data-color-scheme="light"] .agenda-app .matrix-tags span { font-weight: 650; }
 
 /* Application shell */
 .agenda-app { width: 100vw; height: 100vh; display: flex; overflow: hidden; background-color: var(--app-bg); position: relative; }
 .agenda-app::after { content: ""; position: fixed; inset: 0; z-index: 999; border: 1px solid rgba(255, 255, 255, 0.035); pointer-events: none; }
+[data-color-scheme="light"] .agenda-app::after { border-color: rgba(24, 24, 24, 0.06); }
 .agenda-app .main-workspace { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: transparent; position: relative; }
 .agenda-app .workspace-subbar { flex: none; display: flex; flex-direction: column; gap: 9px; padding: 14px 24px 0; }
 .agenda-app .main-content-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 24px 48px; }
@@ -355,36 +1394,44 @@ kbd { font-family: var(--font-mono); }
 .agenda-app.compact-mode .main-content-scroll { padding-top: 10px; }
 
 /* Reminder list and detail */
-.agenda-app .reminder-list { display: flex; flex-direction: column; gap: 12px; }
+.agenda-app .reminder-list { display: flex; flex-direction: column; gap: 14px; }
 .agenda-app .list-controls-bar {
-  min-height: 40px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 2px 2px 10px;
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding: 0 2px 10px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-tertiary);
 }
-.agenda-app .controls-left, .agenda-app .controls-right, .agenda-app .sub-filters { display: flex; align-items: center; gap: 6px; }
-.agenda-app .select-all-toggle { display: flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--text-tertiary); font-size: 10.5px; cursor: pointer; }
+.agenda-app .controls-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.agenda-app .controls-right { display: flex; align-items: center; gap: 8px; flex: none; }
+.agenda-app .control-dropdown-wrap { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.agenda-app .sub-filters { display: flex; align-items: center; gap: 5px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.agenda-app .sub-filters::-webkit-scrollbar { display: none; }
+.agenda-app .select-all-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--text-tertiary); font-size: 11px; white-space: nowrap; cursor: pointer; flex: none; }
 .agenda-app .select-all-box, .agenda-app .task-check { width: 15px; height: 15px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 4px; background: transparent; color: #07080a; }
 .agenda-app .select-all-toggle.checked .select-all-box, .agenda-app .task-check.checked { border-color: var(--lime); background: var(--lime); }
-[data-theme="daylight"] .agenda-app .select-all-toggle.checked .select-all-box, [data-theme="daylight"] .agenda-app .task-check.checked { border-color: var(--accent); background: var(--accent); color: white; }
-.agenda-app .total-count { color: var(--text-quaternary); font: 600 10px var(--font-mono); letter-spacing: 0.04em; }
+[data-color-scheme="light"] .agenda-app .select-all-toggle.checked .select-all-box,
+[data-color-scheme="light"] .agenda-app .task-check.checked { border-color: var(--accent); background: var(--accent); color: white; }
+.agenda-app .total-count { padding: 2px 8px; border-radius: 999px; background: var(--fill-subtle); color: var(--text-tertiary); font: 600 10.5px var(--font-mono); letter-spacing: 0.02em; white-space: nowrap; flex: none; }
 
 /* Scrolltide "Pour" Liquid Fill Pills */
 .agenda-app .sub-filter-pill {
   position: relative;
   overflow: hidden;
-  height: 26px;
-  padding: 0 11px;
+  height: 25px;
+  padding: 0 10px;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
   background: transparent;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 550;
+  white-space: nowrap;
+  flex: none;
   cursor: pointer;
   transition: color 0.2s ease, border-color 0.2s ease, transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
 }
@@ -401,39 +1448,52 @@ kbd { font-family: var(--font-mono); }
   box-shadow: 0 4px 14px color-mix(in srgb, var(--tide) 36%, transparent);
 }
 
-.agenda-app .sort-label { color: var(--text-quaternary); font: 600 9.5px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.agenda-app .sort-label { color: var(--text-quaternary); font: 600 10px var(--font-mono); letter-spacing: 0.04em; }
 .agenda-app .reminder-list-layout { display: flex; align-items: flex-start; gap: 16px; }
-.agenda-app .groups-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
-.agenda-app .group-section { display: grid; gap: 8px; }
+.agenda-app .groups-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+.agenda-app .group-section { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .agenda-app .group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 22px;
+  width: 100%;
+  min-height: 24px;
   padding: 0 4px;
   border: 0;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
-.agenda-app .group-collapse-arrow { width: 11px; color: var(--text-quaternary); font-size: 8px; }
+.agenda-app .group-header::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-left: 6px;
+  background: linear-gradient(90deg, var(--border-subtle), transparent 90%);
+}
+.agenda-app .group-collapse-arrow { width: 12px; color: var(--text-quaternary); font-size: 8px; flex: none; }
 .agenda-app .group-title {
-  color: var(--text-tertiary);
-  font: 700 9.5px var(--font-mono);
-  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  font: 700 10.5px var(--font-mono);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .agenda-app .group-badge {
-  padding: 1px 6px;
+  padding: 1px 7px;
   border-radius: 999px;
   border: 1px solid var(--border-subtle);
   background: var(--fill-subtle);
   color: var(--text-tertiary);
-  font: 700 8.5px var(--font-mono);
+  font: 700 9.5px var(--font-mono);
 }
 .agenda-app .group-cards {
+  min-width: 0;
   overflow: visible;
-  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   background: color-mix(in oklab, var(--surface) 92%, transparent);
@@ -441,27 +1501,86 @@ kbd { font-family: var(--font-mono); }
 }
 .agenda-app .task-row {
   position: relative;
-  min-height: 66px;
+  min-width: 0;
+  min-height: 58px;
   display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 10px 12px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 16px;
   border: 1px solid transparent;
   border-radius: 10px;
-  cursor: default;
+  cursor: pointer;
   transition: background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast);
 }
-.agenda-app .task-row + .task-row { border-top-color: var(--border-subtle); border-top-left-radius: 0; border-top-right-radius: 0; }
-.agenda-app .task-row:hover { z-index: 2; border-color: var(--border-strong); background: var(--fill-hover); }
+.agenda-app .task-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -2px;
+  height: 1px;
+  background: var(--border-subtle);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity var(--motion-fast);
+}
+.agenda-app .task-row:hover::after,
+.agenda-app .task-row:has(+ .task-row:hover)::after,
+.agenda-app .task-row.selected::after,
+.agenda-app .task-row.active-focus::after {
+  opacity: 0;
+}
+.agenda-app .task-row:hover { z-index: 5; border-color: var(--border-strong); background: var(--fill-hover); }
+.agenda-app .task-row:focus-within { z-index: 10; }
+.agenda-app .task-row.menu-open { z-index: 40; }
+.agenda-app .group-section:has(.task-row.menu-open) { position: relative; z-index: 40; }
+[data-theme^="shanshui-"] .agenda-app .task-row:hover {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tide) 9%, var(--fill-hover)), var(--fill-hover) 62%, color-mix(in srgb, var(--seal-red) 5%, var(--fill-hover)));
+}
 .agenda-app .task-row.selected, .agenda-app .task-row.active-focus {
   border-color: var(--accent-border);
   background: var(--fill-active);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   outline: 0;
 }
-.agenda-app .task-row.ended { opacity: 0.52; }
-.agenda-app .task-row.paused { opacity: 0.72; }
-.agenda-app .task-row.near { box-shadow: inset 2.5px 0 0 var(--vermilion); }
+.agenda-app .task-row.ended { opacity: 0.56; }
+.agenda-app .task-row.expired { border-color: color-mix(in srgb, var(--danger) 20%, transparent); }
+.agenda-app .task-row.paused { opacity: 0.74; }
+.agenda-app .task-row.near::before,
+.agenda-app .task-row.overdue::before,
+.agenda-app .task-row.is-pinned::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.agenda-app .task-row.near::before { background: var(--vermilion); }
+.agenda-app .task-row.overdue::before { background: var(--danger); }
+.agenda-app .task-row.is-pinned::before { background: var(--warning); }
+.agenda-app .task-row.near.is-pinned::before { background: linear-gradient(180deg, var(--warning), var(--vermilion)); }
+.agenda-app .task-row.overdue.is-pinned::before { background: linear-gradient(180deg, var(--warning), var(--danger)); }
+.agenda-app .task-row.is-pinned { background: color-mix(in srgb, var(--warning) 4.5%, transparent); }
+.agenda-app .task-row.overdue:not(.is-pinned) { background: color-mix(in srgb, var(--danger) 3.8%, transparent); }
+.agenda-app .task-row.near:not(.is-pinned):not(.overdue) { background: color-mix(in srgb, var(--vermilion) 3.5%, transparent); }
+
+.agenda-app.compact-mode .task-row {
+  padding: 9px 14px;
+  min-height: 50px;
+  gap: 10px;
+}
+.agenda-app.compact-mode .main-col { gap: 3px; }
+
+.agenda-app .row-lead-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+  flex: none;
+}
 
 .agenda-app .task-complete-btn {
   width: 18px;
@@ -486,102 +1605,147 @@ kbd { font-family: var(--font-mono); }
   background: var(--success);
   box-shadow: 0 0 10px color-mix(in srgb, var(--success) 45%, transparent);
 }
-.agenda-app .task-check { opacity: 0; flex: 0 0 15px; cursor: pointer; transition: opacity var(--motion-fast); }
-.agenda-app .task-row:hover .task-check, .agenda-app .task-check.checked { opacity: 1; }
-.agenda-app .pin-star-btn { width: 17px; height: 20px; border: 0; background: transparent; color: var(--text-quaternary); cursor: pointer; font-size: 12px; }
-.agenda-app .pin-star-btn.active { color: var(--warning); }
-.agenda-app .time-col { width: 59px; flex: 0 0 59px; display: grid; gap: 2px; }
-.agenda-app .time-text { color: var(--text-primary); font: 700 11.5px var(--font-mono); letter-spacing: -0.02em; }
-.agenda-app .date-badge { color: var(--text-quaternary); font: 600 8.5px var(--font-mono); }
-.agenda-app .main-col { min-width: 0; flex: 1; display: grid; gap: 6px; }
-.agenda-app .title-line, .agenda-app .chips-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
-.agenda-app .task-title { max-width: 100%; overflow: hidden; color: var(--text-primary); font-size: 13px; font-weight: 600; letter-spacing: -0.015em; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.agenda-app .task-complete-btn.paused {
+  border-style: dashed;
+  border-color: var(--text-quaternary);
+}
+.agenda-app .task-complete-btn.expired {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border-strong));
+}
+.agenda-app .task-check {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  opacity: 0.22;
+  flex: none;
+  cursor: pointer;
+  transition: opacity var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast);
+}
+.agenda-app .task-row:hover .task-check,
+.agenda-app .reminder-list.has-selection .task-check,
+.agenda-app .task-check.checked,
+.agenda-app .task-check:focus-visible {
+  opacity: 1;
+}
+.agenda-app .time-col { width: 54px; flex: 0 0 54px; display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
+.agenda-app .time-text { color: var(--text-primary); font: 700 13px/1.25 var(--font-mono); letter-spacing: -0.02em; }
+.agenda-app .date-badge { color: var(--text-quaternary); font: 600 10px/1.2 var(--font-mono); }
+.agenda-app .main-col { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.agenda-app .title-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.agenda-app .title-line { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.agenda-app .chips-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.agenda-app .task-title { min-width: 0; max-width: 100%; flex: 0 1 auto; overflow: hidden; color: var(--text-primary); font-size: 13.5px; font-weight: 600; line-height: 1.4; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
 .agenda-app .task-title:hover { color: var(--accent-text); }
 .agenda-app .title-ended { text-decoration: line-through; }
+
+.agenda-app .meta-inline-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.agenda-app .meta-inline-dot { color: var(--text-quaternary); }
+.agenda-app .meta-inline-item { white-space: nowrap; }
+
+.agenda-app .task-note-preview {
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-color-scheme="light"] .agenda-app .task-note-preview { color: var(--text-secondary); }
+[data-color-scheme="light"] .agenda-app .meta-inline-group { color: var(--text-tertiary); }
 
 /* Signal LED priority pills */
 .agenda-app .badge-pinned, .agenda-app .badge-priority, .agenda-app .tag-badge {
   min-height: 19px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
+  gap: 3px;
+  padding: 1px 7px;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
-  font-size: 8.5px;
+  font-size: 9.5px;
   font-weight: 700;
   font-family: var(--font-mono);
 }
 .agenda-app .badge-priority.p0 { color: #ff8e91; border-color: rgba(255, 101, 104, 0.35); background: rgba(255, 101, 104, 0.12); }
 .agenda-app .badge-priority.p1 { color: var(--lime); border-color: color-mix(in srgb, var(--lime) 36%, transparent); background: color-mix(in srgb, var(--lime) 10%, transparent); }
 .agenda-app .badge-priority.p3 { color: var(--text-tertiary); background: var(--fill-subtle); }
-[data-theme="daylight"] .agenda-app .badge-priority.p0 { color: #c71f2d; border-color: rgba(220, 38, 38, 0.28); background: rgba(220, 38, 38, 0.08); }
-[data-theme="daylight"] .agenda-app .badge-priority.p1 { color: var(--lime-strong); border-color: rgba(74, 107, 0, 0.28); background: rgba(160, 210, 0, 0.16); }
+[data-color-scheme="light"] .agenda-app .badge-priority.p0 { color: #c71f2d; border-color: rgba(220, 38, 38, 0.28); background: rgba(220, 38, 38, 0.08); }
+[data-color-scheme="light"] .agenda-app .badge-priority.p1 { color: var(--lime-strong); border-color: rgba(74, 107, 0, 0.28); background: rgba(160, 210, 0, 0.16); }
 
 .agenda-app .task-actions-capsule {
-  position: absolute;
-  top: -15px;
-  right: 10px;
+  position: relative;
+  flex: none;
   z-index: 15;
+  margin-top: -2px;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 3px;
-  border: 1px solid var(--border-strong);
+  padding: 2px 4px;
+  border: 1px solid var(--border-subtle);
   border-radius: 999px;
   background: var(--surface-overlay);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(14px);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(3px);
-  transition: opacity var(--motion-fast), transform var(--motion-fast);
+  transform: translateX(4px);
+  transition: opacity var(--motion-fast), transform var(--motion-fast), border-color var(--motion-fast);
 }
 .agenda-app .task-row:hover .task-actions-capsule,
+.agenda-app .task-row.menu-open .task-actions-capsule,
 .agenda-app .task-actions-capsule:focus-within {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translateX(0);
 }
-.agenda-app .task-actions-capsule .icon-btn { width: 24px; min-width: 24px; height: 24px; padding: 0; border-color: transparent; border-radius: 50%; }
+.agenda-app .task-actions-capsule .icon-btn { width: 22px; min-width: 22px; height: 22px; padding: 0; border-color: transparent; border-radius: 50%; }
+.agenda-app .task-actions-capsule .pin-action-btn.active { color: var(--warning); }
 
-.agenda-app .inline-subtasks-panel { display: grid; gap: 3px; margin-top: 3px; padding: 7px 10px; border-left: 2px solid var(--tide); background: var(--fill-subtle); border-radius: 0 7px 7px 0; }
-.agenda-app .inline-subtask-item { display: flex; align-items: center; gap: 7px; min-height: 25px; color: var(--text-secondary); font-size: 10.5px; }
-.agenda-app .inline-add-subtask-input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text-secondary); font-size: 10.5px; }
+.agenda-app .inline-subtasks-panel { display: grid; gap: 4px; margin-top: 4px; padding: 8px 11px; border-left: 2px solid var(--tide); background: var(--fill-subtle); border-radius: 0 8px 8px 0; }
+.agenda-app .inline-subtask-item { display: flex; align-items: center; gap: 8px; min-height: 24px; color: var(--text-secondary); font-size: 11.5px; }
+.agenda-app .inline-add-subtask-input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text-secondary); font-size: 11.5px; }
 
-/* Side Inspector Bento Drawer (Midwater Depth + Reticles) */
-.agenda-app .task-inspector-panel {
-  width: 326px;
-  flex: 0 0 326px;
-  position: sticky;
-  top: 0;
-  max-height: calc(100vh - 112px);
+/* Schedule Detail Modal (Midwater Depth + Reticles) */
+.agenda-app .task-inspector-modal {
+  position: relative;
+  z-index: 1;
+  width: min(500px, calc(100vw - 32px));
+  max-height: min(86vh, 720px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 15px;
   background:
     radial-gradient(90% 45% at 100% 0%, color-mix(in srgb, var(--tide) 10%, transparent), transparent 65%),
     var(--surface-raised);
-  box-shadow: var(--shadow-sm);
-  animation: inspector-in var(--motion-normal);
 }
-@keyframes inspector-in { from { opacity: 0; transform: translateX(12px); } }
-.agenda-app .inspector-header { min-height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); background: transparent; }
+.agenda-app .inspector-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .agenda-app .inspector-header-left { display: flex; align-items: center; gap: 6px; }
 .agenda-app .inspector-badge-pri, .agenda-app .inspector-badge-status { min-height: 24px; padding: 0 9px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--fill-subtle); color: var(--text-secondary); font: 700 9.5px var(--font-mono); cursor: pointer; }
 .agenda-app .inspector-badge-pri.p0 { color: #ff8e91; background: rgba(255, 101, 104, 0.14); border-color: rgba(255, 101, 104, 0.36); }
 .agenda-app .inspector-badge-pri.p1 { color: var(--lime-strong); background: color-mix(in srgb, var(--lime) 14%, transparent); border-color: color-mix(in srgb, var(--lime) 38%, transparent); }
 .agenda-app .inspector-badge-pri.p2 { color: var(--tide-text); background: color-mix(in srgb, var(--tide) 14%, transparent); border-color: color-mix(in srgb, var(--tide) 36%, transparent); }
-[data-theme="daylight"] .agenda-app .inspector-badge-pri.p0 { color: #c71f2d; background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.32); }
-[data-theme="daylight"] .agenda-app .inspector-badge-pri.p1 { color: var(--lime-strong); background: rgba(160, 210, 0, 0.16); border-color: rgba(74, 107, 0, 0.32); }
+[data-color-scheme="light"] .agenda-app .inspector-badge-pri.p0 { color: #c71f2d; background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.32); }
+[data-color-scheme="light"] .agenda-app .inspector-badge-pri.p1 { color: var(--lime-strong); background: color-mix(in srgb, var(--lime) 18%, transparent); border-color: color-mix(in srgb, var(--lime-strong) 34%, transparent); }
 .agenda-app .inspector-badge-status.ended { color: var(--success); background: color-mix(in srgb, var(--success) 13%, transparent); border-color: color-mix(in srgb, var(--success) 34%, transparent); }
+.agenda-app .inspector-badge-status.expired { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); border-color: color-mix(in srgb, var(--danger) 34%, transparent); }
 .agenda-app .inspector-badge-status.paused { color: var(--warning); background: color-mix(in srgb, var(--warning) 13%, transparent); border-color: color-mix(in srgb, var(--warning) 34%, transparent); }
-.agenda-app .inspector-body { flex: 1; display: flex; flex-direction: column; gap: 17px; overflow: auto; padding: 16px; }
+.agenda-app .inspector-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; padding: 14px 2px 10px; }
 .agenda-app .inspector-section { display: grid; gap: 7px; }
+.agenda-app .inspector-section.inspector-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .agenda-app .inspector-field-label { color: var(--text-quaternary); font: 700 9px var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
-.agenda-app .inspector-title-input, .agenda-app .inspector-add-subtask-input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 8px; outline: 0; background: var(--input-bg); color: var(--text-primary); }
+.agenda-app .inspector-title-input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 8px; outline: 0; background: var(--input-bg); color: var(--text-primary); }
+.agenda-app .inspector-add-subtask-input { width: 100%; border: 0; border-radius: 6px; outline: 0; background: transparent; color: var(--text-primary); }
+.agenda-app .inspector-add-subtask-input:not(:first-child) { margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--border-subtle); border-radius: 0; }
 .agenda-app .inspector-title-input { min-height: 38px; padding: 0 10px; font-size: 12.5px; font-weight: 650; }
 .agenda-app .inspector-title-input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-soft); }
 .agenda-app .inspector-time-box { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font: 600 10.5px var(--font-mono); }
@@ -594,14 +1758,16 @@ kbd { font-family: var(--font-mono); }
 .agenda-app .inspector-st-text.done { color: var(--text-quaternary); text-decoration: line-through; }
 .agenda-app .inspector-st-del { border: 0; background: transparent; color: var(--text-quaternary); cursor: pointer; }
 .agenda-app .inspector-add-subtask-input { height: 31px; padding: 0 9px; }
-.agenda-app .inspector-notes-box { padding: 10px; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--fill-subtle); color: var(--text-secondary); font-size: 11px; line-height: 1.65; white-space: pre-wrap; }
-.agenda-app .inspector-footer-dock { display: flex; gap: 6px; padding: 11px 14px; border-top: 1px solid var(--border-subtle); }
+.agenda-app .inspector-notes-box { padding: 10px; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--fill-subtle); color: var(--text-secondary); font-size: 11px; line-height: 1.55; white-space: normal; }
+.agenda-app .inspector-footer-dock { flex: none; display: flex; gap: 8px; padding: 12px 0 0; border-top: 1px solid var(--border-subtle); }
 .agenda-app .inspector-action-btn { flex: 1; min-height: 32px; border: 1px solid var(--border-subtle); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 10.5px; font-weight: 600; cursor: pointer; transition: all var(--motion-fast); }
 .agenda-app .inspector-action-btn:hover { background: var(--fill-hover); color: var(--text-primary); }
 .agenda-app .inspector-action-btn.primary { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-text); }
 .agenda-app .inspector-action-btn.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 
-.agenda-app .context-menu, .agenda-app .snooze-dropdown { position: fixed; z-index: var(--z-float); min-width: 184px; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface-overlay); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px); }
+.agenda-app .context-menu { position: fixed; z-index: calc(var(--z-overlay) + 5); min-width: 184px; max-height: calc(100vh - 20px); overflow-y: auto; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface-overlay); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px); }
+.agenda-app .snooze-dropdown { position: fixed; z-index: calc(var(--z-overlay) + 5); width: 156px; max-height: calc(100vh - 20px); overflow-y: auto; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface-overlay); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 2px; animation: fade-in 0.12s ease; }
+.agenda-app .snooze-dropdown.flip-up { transform-origin: bottom right; }
 .agenda-app .context-menu-title { padding: 7px 8px; overflow: hidden; color: var(--text-quaternary); font: 600 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .agenda-app .ctx-item, .agenda-app .snooze-opt-btn { width: 100%; min-height: 30px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font-size: 10.5px; text-align: left; cursor: pointer; }
 .agenda-app .ctx-item:hover, .agenda-app .snooze-opt-btn:hover { background: var(--fill-hover); color: var(--text-primary); }
@@ -641,7 +1807,16 @@ kbd { font-family: var(--font-mono); }
 .agenda-app .loading-state-head { display: flex; align-items: center; gap: 8px; color: var(--tide-text); font: 700 10px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .agenda-app .loading-spinner { width: 11px; height: 11px; border: 2px solid var(--accent-border); border-top-color: var(--tide); border-radius: 50%; animation: skein-spin 0.8s linear infinite; }
 @keyframes skein-spin { to { transform: rotate(360deg); } }
-.agenda-app .loading-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--fill-subtle); }
+.agenda-app .loading-row {
+  display: grid;
+  grid-template-columns: 16px 60px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+}
 .agenda-app .loading-skeleton {
   display: block;
   border-radius: 6px;
@@ -650,10 +1825,12 @@ kbd { font-family: var(--font-mono); }
   animation: skein-shimmer 1.4s ease-in-out infinite;
 }
 @keyframes skein-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-.agenda-app .loading-dot { width: 16px; height: 16px; border-radius: 50%; flex: none; }
-.agenda-app .loading-time { width: 48px; height: 14px; flex: none; }
-.agenda-app .loading-title { flex: 1; height: 14px; max-width: 60%; }
-.agenda-app .loading-chip { width: 64px; height: 18px; border-radius: 999px; flex: none; }
+.agenda-app .loading-dot { width: 16px; height: 16px; border-radius: 50%; }
+.agenda-app .loading-time { width: 52px; height: 14px; }
+.agenda-app .loading-title { width: 64%; height: 14px; }
+.agenda-app .loading-row:nth-child(2n) .loading-title { width: 48%; }
+.agenda-app .loading-row:nth-child(3n) .loading-title { width: 76%; }
+.agenda-app .loading-chip { width: 62px; height: 18px; border-radius: 999px; }
 
 /* Calendar & Eisenhower Matrix (Midwater Bento surfaces) */
 .agenda-app .week-timeline-view, .agenda-app .month-view {
@@ -682,7 +1859,8 @@ kbd { font-family: var(--font-mono); }
 .agenda-app .month-task-pill { border-color: transparent; border-radius: 6px; background: var(--fill-hover); color: var(--text-secondary); }
 .agenda-app .month-task-pill.pri-p0 { color: #ff8e91; background: rgba(255, 101, 104, 0.12); }
 .agenda-app .month-task-pill.pri-p1 { color: var(--lime); background: color-mix(in srgb, var(--lime) 10%, transparent); }
-[data-theme="daylight"] .agenda-app .month-task-pill.pri-p1 { color: var(--lime-strong); }
+[data-color-scheme="light"] .agenda-app .month-task-pill.pri-p0 { color: #b91c1c; background: rgba(220, 38, 38, 0.09); }
+[data-color-scheme="light"] .agenda-app .month-task-pill.pri-p1 { color: var(--lime-strong); background: color-mix(in srgb, var(--lime) 18%, transparent); }
 
 .agenda-app .matrix-container { display: flex; flex-direction: column; gap: 12px; }
 .agenda-app .matrix-header { padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--surface); }
@@ -708,36 +1886,164 @@ kbd { font-family: var(--font-mono); }
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay);
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(3, 5, 8, 0.72);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  padding: 20px;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
   --wails-draggable: no-drag;
   -webkit-app-region: no-drag;
 }
-[data-theme="daylight"] .agenda-app .modal-overlay,
-[data-theme="daylight"] .agenda-app .drawer-overlay,
-[data-theme="daylight"] .agenda-app .command-palette-overlay,
-[data-theme="daylight"] .agenda-app .focus-overlay {
-  background: rgba(15, 20, 28, 0.44);
+.agenda-app .command-palette-overlay {
+  z-index: var(--z-command);
+  align-items: flex-start;
+  padding-top: 10.5vh;
 }
-@keyframes st-card-pop {
-  from { opacity: 0; transform: translateY(6px) scale(0.985); }
-  to { opacity: 1; transform: none; }
+[data-color-scheme="light"] .agenda-app .modal-overlay,
+[data-color-scheme="light"] .agenda-app .drawer-overlay,
+[data-color-scheme="light"] .agenda-app .command-palette-overlay,
+[data-color-scheme="light"] .agenda-app .focus-overlay {
+  background: var(--overlay-scrim);
 }
-.agenda-app .modal-card, .agenda-app .trash-card, .agenda-app .briefing-card, .agenda-app .shortcuts-card, .agenda-app .day-detail-card, .agenda-app .focus-card, .agenda-app .command-palette-card {
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-active :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .solar-modal-card, .day-detail-card, .focus-card, .command-palette-card, .settings-shell) {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease;
+}
+.modal-fade-leave-active :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .solar-modal-card, .day-detail-card, .focus-card, .command-palette-card, .settings-shell) {
+  transition: transform 0.13s cubic-bezier(0.4, 0, 1, 1), opacity 0.12s ease;
+}
+.modal-fade-enter-from :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .solar-modal-card, .day-detail-card, .focus-card, .command-palette-card, .settings-shell) {
+  opacity: 0;
+  transform: translateY(10px) scale(0.978);
+}
+.modal-fade-leave-to :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .solar-modal-card, .day-detail-card, .focus-card, .command-palette-card, .settings-shell) {
+  opacity: 0;
+  transform: translateY(4px) scale(0.986);
+}
+.drawer-fade-enter-active,
+.drawer-fade-leave-active {
+  transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.drawer-fade-enter-from,
+.drawer-fade-leave-to {
+  opacity: 0;
+}
+.drawer-fade-enter-active .drawer-panel {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, width var(--motion-normal), max-width var(--motion-normal);
+}
+.drawer-fade-leave-active .drawer-panel {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 1, 1), opacity 0.14s ease;
+}
+.drawer-fade-enter-from .drawer-panel,
+.drawer-fade-leave-to .drawer-panel {
+  opacity: 0.45;
+  transform: translateX(36px);
+}
+.agenda-app .modal-card,
+.agenda-app .trash-card,
+.agenda-app .briefing-card,
+.agenda-app .shortcuts-card,
+.agenda-app .solar-modal-card,
+.agenda-app .day-detail-card,
+.agenda-app .focus-card,
+.agenda-app .command-palette-card,
+.agenda-app .settings-shell {
   border: 1px solid var(--border-strong);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--surface-raised);
-  box-shadow: var(--shadow-lg);
-  animation: st-card-pop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent);
+}
+[data-color-scheme="light"] .agenda-app :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .solar-modal-card, .day-detail-card, .focus-card, .command-palette-card, .settings-shell) {
+  box-shadow: 0 24px 60px rgba(15, 22, 34, 0.16), 0 4px 16px rgba(15, 22, 34, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 .agenda-app .modal-card, .agenda-app .trash-card, .agenda-app .briefing-card, .agenda-app .shortcuts-card { padding: 22px 24px; }
-.agenda-app .modal-head, .agenda-app .card-head, .agenda-app .detail-head { padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
-.agenda-app .modal-title, .agenda-app .head-title, .agenda-app .detail-title { color: var(--text-primary); font-size: 15px; font-weight: 700; letter-spacing: -0.025em; }
-.agenda-app .drawer-overlay { justify-content: flex-end; }
+.agenda-app .modal-head, .agenda-app .card-head, .agenda-app .detail-head, .agenda-app .solar-head { padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
+.agenda-app .modal-title, .agenda-app .head-title, .agenda-app .detail-title, .agenda-app .solar-title { color: var(--text-primary); font-size: 15px; font-weight: 700; letter-spacing: -0.025em; }
+.agenda-app .modal-close-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--fill-subtle);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex: none;
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
+}
+.agenda-app .modal-close-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--fill-hover);
+  color: var(--text-primary);
+}
+.agenda-app .modal-close-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.agenda-app .modal-close-btn:active {
+  transform: scale(0.95);
+}
+.agenda-app :is(.modal-head, .card-head, .detail-head) > .modal-close-btn,
+.agenda-app :is(.solar-head-right, .head-right) > .modal-close-btn {
+  align-self: flex-start;
+  margin: -10px -12px 0 0;
+}
+.agenda-app .focus-head-right > .modal-close-btn {
+  align-self: flex-start;
+  margin: -12px -14px 0 2px;
+}
+.agenda-app .workspace-actions > .modal-close-btn {
+  align-self: flex-start;
+  margin: -5px -12px 0 0;
+}
+.agenda-app .header-right-btns > .modal-close-btn {
+  align-self: flex-start;
+  margin: -3px -7px 0 2px;
+}
+.agenda-app .briefing-card {
+  padding: 15px 17px 20px;
+}
+.agenda-app .printer-slot-bar > .modal-close-btn {
+  margin: -1px -3px -1px 0;
+}
+.st-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.st-inline-icon svg {
+  flex: none;
+}
+.agenda-app :is(.modal-card, .form-body, .stats-body, .receipt-sheet, .detail-body, .trash-body, .shortcuts-body, .palette-scroll-area, .solar-terms-grid, .history-content, .chat-body, .workspace-body)::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.agenda-app :is(.modal-card, .form-body, .stats-body, .receipt-sheet, .detail-body, .trash-body, .shortcuts-body, .palette-scroll-area, .solar-terms-grid, .history-content, .chat-body, .workspace-body)::-webkit-scrollbar-track {
+  background: transparent;
+}
+.agenda-app :is(.modal-card, .form-body, .stats-body, .receipt-sheet, .detail-body, .trash-body, .shortcuts-body, .palette-scroll-area, .solar-terms-grid, .history-content, .chat-body, .workspace-body)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-quaternary) 45%, transparent);
+}
+.agenda-app :is(.modal-card, .form-body, .stats-body, .receipt-sheet, .detail-body, .trash-body, .shortcuts-body, .palette-scroll-area, .solar-terms-grid, .history-content, .chat-body, .workspace-body)::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-tertiary) 70%, transparent);
+}
+.agenda-app .drawer-overlay { justify-content: flex-end; padding: 0; z-index: var(--z-drawer); }
+.agenda-app .focus-overlay { z-index: var(--z-overlay-high); }
 .agenda-app .drawer-panel { width: 520px; max-width: min(520px, 94vw); height: 100%; border: 0; border-left: 1px solid var(--border-strong); border-radius: 0; background: var(--surface-raised); box-shadow: var(--shadow-lg); transition: width var(--motion-normal), max-width var(--motion-normal); }
 .agenda-app .drawer-panel.is-expanded { width: min(740px, 94vw); max-width: 94vw; }
 .agenda-app .drawer-header { padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
@@ -756,10 +2062,14 @@ kbd { font-family: var(--font-mono); }
 .agenda-app .modal-footer, .agenda-app .modal-foot, .agenda-app .card-foot { border-top-color: var(--border-subtle); }
 
 /* Floating feedback and selection */
-.agenda-app .batch-bar-wrap { position: fixed; bottom: 20px; left: calc(50% + 112px); z-index: var(--z-float); transform: translateX(-50%); }
+.agenda-app .batch-bar-wrap { position: fixed; bottom: 20px; left: calc(50% + 112px); z-index: var(--z-float); max-width: calc(100vw - 32px); transform: translateX(-50%); }
 .agenda-app.sidebar-collapsed .batch-bar-wrap { left: calc(50% + 30px); }
-.agenda-app .batch-dock { display: flex; align-items: center; gap: 10px; padding: 7px 11px 7px 14px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-overlay); box-shadow: var(--shadow-lg); backdrop-filter: blur(20px); }
-.agenda-app .batch-btn { height: 29px; padding: 0 9px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 10px; }
+.agenda-app .batch-dock { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; width: max-content; max-width: 100%; overflow: visible; padding: 6px 10px 6px 14px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-overlay); box-shadow: var(--shadow-lg); backdrop-filter: blur(20px); }
+.agenda-app .batch-dock > * { flex: none; white-space: nowrap; }
+@media (max-width: 840px) {
+  .agenda-app .batch-dock { flex-wrap: wrap; justify-content: center; border-radius: 18px; }
+}
+.agenda-app .batch-btn { height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
 .agenda-app .batch-btn:hover { border-color: var(--border-subtle); background: var(--fill-hover); }
 .agenda-app .batch-btn.success { color: var(--success); }
 .agenda-app .batch-btn.danger { color: var(--danger); }
@@ -777,24 +2087,25 @@ mark.search-highlight { padding: 0 2px; border-radius: 3px; background: color-mi
 
 @media (max-width: 1120px) {
   .agenda-app .workspace-subbar, .agenda-app .main-content-scroll { padding-left: 18px; padding-right: 18px; }
-  .agenda-app .sub-filters { max-width: 310px; overflow-x: auto; }
-  .agenda-app .task-inspector-panel { width: 292px; flex-basis: 292px; }
-  .agenda-app .batch-bar-wrap { left: 52%; }
+  .agenda-app:not(.sidebar-collapsed) .batch-bar-wrap { left: calc(50% + 112px); }
 }
 @media (max-width: 960px) {
-  .agenda-app .controls-left { min-width: 0; }
-  .agenda-app .total-count { display: none; }
-  .agenda-app .task-inspector-panel { position: fixed; top: 51px; right: 0; bottom: 0; z-index: var(--z-float); width: 330px; max-height: none; border-radius: 12px 0 0 0; box-shadow: var(--shadow-lg); }
+  .agenda-app .controls-left { flex: 1 1 100%; flex-wrap: wrap; min-width: 0; }
+  .agenda-app .controls-right { margin-left: auto; }
+  .agenda-app .list-controls-bar { align-items: flex-start; flex-wrap: wrap; }
   .agenda-app .matrix-stats-bar { display: none; }
+}
+@media (max-width: 720px) {
+  .agenda-app .total-count { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
-[data-theme="daylight"] .agenda-app :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .day-detail-card, .focus-card, .command-palette-card, .drawer-panel, .matrix-container, .week-timeline-view, .month-view) { color: var(--text-primary); }
-[data-theme="daylight"] .agenda-app :is(.markdown-body, .markdown-body strong, .markdown-body b, .matrix-title, .q-name, .item-title, .modal-title, .detail-title, .head-title, .setting-name, .field-label) { color: var(--text-primary) !important; }
-[data-theme="daylight"] .agenda-app :is(.bubble-content, .action-card, .editor-section, .settings-section, .kpi-card, .chart-card, .detail-item-row) { border-color: var(--border-subtle) !important; }
-[data-theme="daylight"] .agenda-app .chat-bubble-wrap.user .bubble-text { color: #ffffff !important; }
+[data-color-scheme="light"] .agenda-app :is(.modal-card, .trash-card, .briefing-card, .shortcuts-card, .solar-modal-card, .day-detail-card, .focus-card, .command-palette-card, .drawer-panel, .matrix-container, .week-timeline-view, .month-view) { color: var(--text-primary); }
+[data-color-scheme="light"] .agenda-app :is(.markdown-body, .markdown-body strong, .markdown-body b, .matrix-title, .q-name, .item-title, .modal-title, .detail-title, .head-title, .setting-name, .field-label) { color: var(--text-primary) !important; }
+[data-color-scheme="light"] .agenda-app :is(.bubble-content, .action-card, .editor-section, .settings-section, .kpi-card, .chart-card, .detail-item-row) { border-color: var(--border-subtle) !important; }
+[data-color-scheme="light"] .agenda-app .chat-bubble-wrap.user .bubble-text { color: #ffffff !important; }
 
 .agenda-app .icon-text-btn.danger { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
 
@@ -817,27 +2128,252 @@ mark.search-highlight { padding: 0 2px; border-radius: 3px; background: color-mi
   html[data-print="briefing"] .agenda-app > :not(.modal-overlay) { display: none !important; }
   html[data-print="briefing"] .modal-overlay { position: static !important; display: block !important; background: #fff !important; }
   html[data-print="briefing"] .briefing-card { width: 100% !important; max-width: none !important; max-height: none !important; overflow: visible !important; border: 0 !important; box-shadow: none !important; color: #111 !important; }
+  html[data-print="briefing"] .briefing-card .printer-slot-bar,
   html[data-print="briefing"] .briefing-card .card-head,
   html[data-print="briefing"] .briefing-card .card-foot { display: none !important; }
+  html[data-print="briefing"] .briefing-card .receipt-sheet { overflow: visible !important; max-height: none !important; }
 }
 
 .agenda-app .field-error { color: var(--danger); font-size: 10px; }
 .agenda-app :is(.empty-btn, .perm-delete-btn, .test-btn).confirming,
 .agenda-app .test-btn.danger { border-color: color-mix(in srgb, var(--danger) 38%, transparent) !important; background: color-mix(in srgb, var(--danger) 10%, transparent) !important; color: var(--danger) !important; }
 
-@media (max-width: 1050px) {
-  .agenda-app .list-controls-bar { align-items: flex-start; flex-wrap: wrap; }
-  .agenda-app .controls-left { flex: 1 1 100%; flex-wrap: wrap; }
-  .agenda-app .controls-right { margin-left: auto; }
-}
 @media (max-width: 900px) {
   .agenda-app .task-row > .time-col { display: none; }
-  .agenda-app .task-row > .pin-star-btn:not(.active) { display: none; }
-  .agenda-app .task-actions-capsule { opacity: 1; pointer-events: auto; transform: translateY(0); }
-  .agenda-app .task-inspector-panel { width: min(360px, calc(100vw - 90px)); }
+  .agenda-app .chip-inline-time { display: inline-flex; }
+  .agenda-app .task-actions-capsule { opacity: 1; pointer-events: auto; transform: translateX(0); gap: 1px; padding: 2px 3px; }
 }
 
 .agenda-app .month-task-pill.ended { opacity: 0.48; text-decoration: line-through; cursor: default; }
 .agenda-app .calendar-cell:focus-visible,
 .agenda-app .task-row:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
 .agenda-app [role="menuitem"]:focus { outline: 0; background: var(--fill-hover); color: var(--text-primary); }
+
+/* 浅色宣纸与日光模式 Bento 信号卡对比度规则（基于 data-color-scheme 自动适配所有浅色主题） */
+[data-color-scheme="light"] .agenda-app .bento-next-signal {
+  --signal-color: #ea580c;
+  --signal-text: #c2410c;
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+[data-color-scheme="light"] .agenda-app .bento-next-signal::before {
+  color: rgba(0, 0, 0, 0.2);
+}
+[data-color-scheme="light"] .agenda-app .next-badge {
+  background: rgba(234, 88, 12, 0.1);
+  border-color: rgba(234, 88, 12, 0.2);
+}
+[data-color-scheme="light"] .agenda-app .next-time {
+  color: var(--text-primary);
+}
+[data-color-scheme="light"] .agenda-app .next-dot {
+  color: var(--text-quaternary);
+}
+[data-color-scheme="light"] .agenda-app .next-title {
+  color: var(--text-secondary);
+}
+[data-color-scheme="light"] .agenda-app .reticle-corner-plus {
+  color: rgba(0, 0, 0, 0.25);
+}
+[data-color-scheme="light"] .agenda-app .primary-btn {
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 18%, rgba(0, 0, 0, 0.12));
+}
+[data-color-scheme="light"] .agenda-app .task-row.selected,
+[data-color-scheme="light"] .agenda-app .task-row.active-focus {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 2px 10px color-mix(in srgb, var(--tide) 10%, transparent);
+}
+
+/* 中国山水美学全视图精细润色 */
+[data-theme^="shanshui-"] .agenda-app .nav-item.active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tide) 16%, transparent), color-mix(in srgb, var(--lime) 6%, transparent) 85%, transparent);
+  box-shadow: inset 3px 0 0 var(--tide), inset 0 1px 0 color-mix(in srgb, var(--lime) 14%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .nav-count.alert { color: var(--seal-red, var(--danger)); }
+[data-theme^="shanshui-"] .agenda-app .bento-hero-rhythm {
+  border-color: color-mix(in srgb, var(--tide) 24%, var(--border-subtle));
+}
+[data-theme^="shanshui-"] .agenda-app .quick-add-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--seal-red) 44%, var(--tide));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tide) 20%, transparent), var(--shadow-sm);
+}
+[data-theme^="shanshui-"] .agenda-app .quick-add-wrap.expanded::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--seal-red);
+  opacity: 0.72;
+  pointer-events: none;
+}
+[data-theme^="shanshui-"] .agenda-app .calendar-cell.today {
+  border-color: color-mix(in srgb, var(--seal-red) 55%, var(--tide));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seal-red) 35%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .heat-bar.morning.filled { background: var(--lime-strong); }
+[data-theme^="shanshui-"] .agenda-app .heat-bar.afternoon.filled { background: var(--tide); }
+[data-theme^="shanshui-"] .agenda-app .heat-bar.evening.filled { background: var(--seal-red); }
+[data-theme^="shanshui-"] .agenda-app .now-indicator-line {
+  background: linear-gradient(90deg, var(--seal-red), color-mix(in srgb, var(--seal-red) 28%, transparent));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--seal-red) 66%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .now-pulse-dot,
+[data-theme^="shanshui-"] .agenda-app .now-time-tag { background: var(--seal-red); }
+[data-theme^="shanshui-"] .agenda-app .now-pulse-dot { box-shadow: 0 0 10px var(--seal-red); }
+[data-theme^="shanshui-"] .agenda-app .quadrant-card.p0 { border-top-color: var(--seal-red); }
+[data-theme^="shanshui-"] .agenda-app .quadrant-card.p1 { border-top-color: var(--lime-strong); }
+[data-theme^="shanshui-"] .agenda-app .quadrant-card.p2 { border-top-color: var(--tide); }
+[data-theme^="shanshui-"] .agenda-app .matrix-seal.p1 {
+  background: color-mix(in srgb, var(--lime-strong) 18%, transparent);
+  color: var(--lime-strong);
+  border-color: color-mix(in srgb, var(--lime-strong) 42%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .matrix-seal.p2 {
+  background: color-mix(in srgb, var(--tide) 18%, transparent);
+  color: var(--tide-text);
+  border-color: color-mix(in srgb, var(--tide) 42%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .matrix-seal.p3 {
+  background: var(--fill-subtle);
+  color: var(--text-tertiary);
+  border-color: var(--border-strong);
+}
+[data-theme^="shanshui-"] .agenda-app .heatmap-cell.level-1 {
+  background: color-mix(in srgb, var(--tide) 20%, transparent);
+  border-color: color-mix(in srgb, var(--tide) 36%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .heatmap-cell.level-2 {
+  background: color-mix(in srgb, var(--tide) 54%, color-mix(in srgb, var(--lime) 24%, transparent));
+  border-color: var(--tide);
+}
+[data-theme^="shanshui-"] .agenda-app .heatmap-cell.level-3 {
+  background: linear-gradient(135deg, var(--tide), var(--lime-strong));
+  border-color: var(--lime);
+}
+[data-theme^="shanshui-"] .agenda-app .task-row.is-pinned::before {
+  background: color-mix(in srgb, var(--seal-red) 78%, var(--warning));
+}
+[data-theme^="shanshui-"] .agenda-app .drawer-panel {
+  border-left: 1px solid color-mix(in srgb, var(--tide) 28%, var(--border-strong));
+  background:
+    radial-gradient(80% 45% at 100% 0%, color-mix(in srgb, var(--tide) 9%, transparent), transparent 65%),
+    var(--surface-raised);
+}
+[data-theme^="shanshui-"] .agenda-app .ai-sparkle-icon {
+  border-color: color-mix(in srgb, var(--seal-red) 35%, var(--tide));
+}
+[data-theme^="shanshui-"] .agenda-app .timeline-marker {
+  background: var(--seal-red);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--seal-red) 70%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .toast-capsule {
+  border-color: color-mix(in srgb, var(--tide) 36%, var(--border-strong));
+}
+[data-theme^="shanshui-"] .agenda-app .toast-capsule.success {
+  border-color: color-mix(in srgb, var(--tide) 54%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .toast-capsule.error {
+  border-color: color-mix(in srgb, var(--seal-red) 58%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .header-menu {
+  border-color: color-mix(in srgb, var(--tide) 28%, var(--border-strong));
+}
+[data-theme^="shanshui-"] .agenda-app .batch-dock {
+  border-color: color-mix(in srgb, var(--tide) 34%, var(--border-strong));
+}
+[data-theme^="shanshui-"] .agenda-app .batch-dock .batch-primary {
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--seal-red) 22%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .weekstrip-wrap {
+  border-color: color-mix(in srgb, var(--tide) 20%, var(--border-subtle));
+}
+[data-theme^="shanshui-"] .agenda-app .day-card.today {
+  border-color: color-mix(in srgb, var(--seal-red) 48%, var(--tide));
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--seal-red) 62%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .day-card.active {
+  border-color: var(--tide);
+  background: var(--tide);
+  box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--tide) 45%, transparent);
+}
+[data-theme^="shanshui-"] .agenda-app .day-card.active :is(.day-label, .day-num, .solar-mini-tag) {
+  color: var(--ink-on-accent);
+}
+[data-theme^="shanshui-"] .agenda-app .day-card.active .day-count {
+  background: var(--ink-on-accent);
+  color: var(--tide);
+}
+[data-theme^="shanshui-"] .agenda-app .day-card.active::after {
+  background: var(--ink-on-accent);
+}
+[data-theme^="shanshui-"] .agenda-app :is(.group-cards, .week-timeline-view, .month-view, .quadrant-card) {
+  box-shadow: var(--shadow-xs), inset 0 1px 0 var(--highlight-edge);
+}
+[data-theme^="shanshui-"] .agenda-app :is(.shortcuts-card, .trash-card, .focus-card, .briefing-card, .solar-modal-card, .day-detail-card, .modal-card, .context-menu, .snooze-dropdown) {
+  border-color: color-mix(in srgb, var(--tide) 28%, var(--border-strong));
+}
+[data-color-scheme="light"] .agenda-app :is(.context-menu, .snooze-dropdown, .day-detail-card) {
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+[data-theme^="shanshui-"] .agenda-app .kicker-shanshui {
+  cursor: pointer;
+}
+[data-theme^="shanshui-"] .agenda-app .day-label.is-solar-day {
+  color: var(--seal-red, var(--tide-text));
+  font-weight: 700;
+}
+[data-theme^="shanshui-"] .agenda-app .shanshui-picker-btn {
+  border-color: color-mix(in srgb, var(--seal-red) 36%, var(--tide));
+  background: color-mix(in srgb, var(--tide) 9%, var(--fill-subtle));
+}
+[data-theme^="shanshui-"] .agenda-app .timer-dial-wrap.running .timer-circle-progress {
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tide) 45%, transparent));
+}
+[data-theme^="shanshui-"] .agenda-app .modal-title,
+[data-theme^="shanshui-"] .agenda-app .head-title,
+[data-theme^="shanshui-"] .agenda-app .empty-title {
+  letter-spacing: 0.015em;
+}
+[data-theme^="shanshui-"] .agenda-app .workspace-header {
+  border-bottom-color: color-mix(in srgb, var(--tide) 18%, var(--border-subtle));
+}
+
+/* 经典主题专属光影质感 (Curated Signatures) */
+[data-theme="cyber"] .agenda-app :is(.bento-hero-rhythm, .week-timeline-view, .month-view) {
+  border-color: color-mix(in srgb, var(--tide) 24%, var(--border-subtle));
+}
+[data-theme="amber"] .agenda-app .nav-item.active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tide) 18%, transparent), transparent 88%);
+}
+[data-theme="aurora"] .agenda-app :is(.modal-card, .command-palette-card, .focus-card, .settings-shell) {
+  box-shadow: var(--shadow-lg), 0 0 42px -12px color-mix(in srgb, var(--tide) 24%, transparent);
+}
+[data-theme="daylight"] .agenda-app :is(.group-cards, .week-timeline-view, .month-view, .quadrant-card) {
+  box-shadow: 0 1px 3px rgba(17, 20, 25, 0.05), 0 8px 22px rgba(17, 20, 25, 0.04);
+}
+
+/* 山水雅宋标题字体开关 (agenda_shanshui_serif) */
+[data-shanshui-serif="true"][data-theme^="shanshui-"] .agenda-app :is(.modal-title, .head-title, .detail-title, .solar-title, .empty-title, .matrix-title, .hero-title, .workspace-heading h4, .context-copy h1) {
+  font-family: var(--font-shanshui-display);
+  letter-spacing: 0.03em;
+}
+
+/* 高对比护眼增强开关 (agenda_high_contrast) */
+[data-high-contrast="true"] {
+  --text-secondary: #dce3ee;
+  --text-tertiary: #b6c0cf;
+  --text-quaternary: #8a95a6;
+  --border-subtle: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.3);
+}
+[data-high-contrast="true"][data-color-scheme="light"] {
+  --text-primary: #0b0e12;
+  --text-secondary: #222832;
+  --text-tertiary: #424b59;
+  --text-quaternary: #646f80;
+  --border-subtle: rgba(17, 20, 25, 0.18);
+  --border-strong: rgba(17, 20, 25, 0.34);
+}

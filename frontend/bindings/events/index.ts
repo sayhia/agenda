@@ -9,6 +9,31 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "desktop-status-updated".
+ */
+export const DesktopStatusUpdated = "desktop-status-updated";
+
+/**
+ * Name of the custom event "focus-bind-reminder".
+ */
+export const FocusBindReminder = "focus-bind-reminder";
+
+/**
+ * Name of the custom event "focus-command".
+ */
+export const FocusCommand = "focus-command";
+
+/**
+ * Name of the custom event "focus-state-sync".
+ */
+export const FocusStateSync = "focus-state-sync";
+
+/**
+ * Name of the custom event "open-ai-action-draft".
+ */
+export const OpenAiActionDraft = "open-ai-action-draft";
+
+/**
  * Name of the custom event "open-ai-drawer".
  */
 export const OpenAiDrawer = "open-ai-drawer";
@@ -19,6 +44,21 @@ export const OpenAiDrawer = "open-ai-drawer";
 export const OpenCreateModal = "open-create-modal";
 
 /**
+ * Name of the custom event "open-reminder-detail".
+ */
+export const OpenReminderDetail = "open-reminder-detail";
+
+/**
+ * Name of the custom event "open-settings-tab".
+ */
+export const OpenSettingsTab = "open-settings-tab";
+
+/**
+ * Name of the custom event "reminder-lead-triggered".
+ */
+export const ReminderLeadTriggered = "reminder-lead-triggered";
+
+/**
  * Name of the custom event "reminder-triggered".
  */
 export const ReminderTriggered = "reminder-triggered";
@@ -27,11 +67,6 @@ export const ReminderTriggered = "reminder-triggered";
  * Name of the custom event "reminders-updated".
  */
 export const RemindersUpdated = "reminders-updated";
-
-/**
- * Name of the custom event "time".
- */
-export const Time = "time";
 
 /**
  * Name of the custom event "window-fullscreen".

@@ -25,10 +25,13 @@ const shortcuts = [
     ],
   },
   {
-    category: '多维视图切换',
+    category: '多维视图与主题',
     items: [
       { key: '1  ~  4', desc: '快速切换列表 / 周计划 / 月历 / 四象限' },
-      { key: '[  /  ]  ·  t', desc: '周时间轴与月历前后翻页，T 返回今天' },
+      { key: '[  /  ]  ·  t', desc: '周时间轴与月历前后翻页，t 返回今天' },
+      { key: '⇧ + T', desc: '当前主题对应的浅色 / 深色雅配一键互换' },
+      { key: '{  /  }', desc: '依次切换上一套 / 下一套美学主题' },
+      { key: `${cmdKey} + K`, desc: '快速搜索切换 24 境主题、矿物点睛色与画布浓度' },
     ],
   },
   {
@@ -38,28 +41,50 @@ const shortcuts = [
       { key: 'k  /  ↑', desc: '光标上移：聚焦上一项日程' },
       { key: 'x', desc: '多选切换：选中 / 反选当前聚焦项' },
       { key: 'Space', desc: '完成切换：完成或重新开启当前日程' },
-      { key: 'e', desc: '快速编辑：打开当前日程修改面板' },
+      { key: 'e', desc: '快速编辑：打开当前日程编辑弹层' },
       { key: 'p', desc: '专注模式：为当前日程启动 25 分钟番茄钟' },
+      { key: `${cmdKey} + D`, desc: '快速克隆：复制当前聚焦日程至明日 (+1天)' },
       { key: 'Delete', desc: '删除日程：删除当前项（放入废纸篓）' },
+    ],
+  },
+  {
+    category: '番茄专注沉浸模态',
+    items: [
+      { key: 'Space', desc: '开始或暂停当前专注 / 休息倒计时' },
+      { key: 'V  /  H', desc: 'V 切换 5 种计时展现形式；H 切换 6 种全息表盘 HUD' },
+      { key: 'R', desc: '重置当前阶段倒计时并清除本轮扰动' },
+      { key: 'N', desc: '跳过当前阶段，进入短休 / 长休 / 下一轮' },
+      { key: 'M', desc: '一键静音或开启背景环境声景' },
+      { key: 'Z', desc: '切换禅意极简模式，隐去非必要信息' },
+      { key: 'D  /  [  ]', desc: '记录 1 次分心觉察；[ / ] 微调 5 分钟' },
     ],
   },
 ];
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="shortcuts-card st-reticle" role="dialog" aria-modal="true" aria-label="键盘快捷键">
+  <Transition name="modal-fade">
+    <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+      <div class="shortcuts-card st-reticle" role="dialog" aria-modal="true" aria-label="键盘快捷键">
       <div class="card-head">
         <div class="head-left">
-          <span class="head-eyebrow">GLOWCAP KEYMAP</span>
-          <h3 class="head-title">按键快捷操作速查指南</h3>
+          <span class="head-eyebrow">GLOWCAP KEYMAP · 指端笔意</span>
+          <h3 class="head-title">按键快捷操作速查指南 <span class="shanshui-seal baiwen" title="键谱朱印">键</span></h3>
         </div>
-        <button class="icon-btn" title="关闭" @click="$emit('close')">✕</button>
+        <button class="modal-close-btn" title="关闭" aria-label="关闭" @click="$emit('close')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <div class="shortcuts-body">
         <div v-for="(cat, idx) in shortcuts" :key="cat.category" class="cat-section">
-          <h4 class="cat-title">0{{ idx + 1 }} · {{ cat.category }}</h4>
+          <div class="cat-title-row">
+            <h4 class="cat-title">0{{ idx + 1 }} · {{ cat.category }}</h4>
+            <span class="cat-count tabular-nums">{{ cat.items.length }} 项</span>
+          </div>
           <div class="cat-grid">
             <div v-for="sc in cat.items" :key="sc.key" class="shortcut-row">
               <span class="sc-desc">{{ sc.desc }}</span>
@@ -74,40 +99,42 @@ const shortcuts = [
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(3, 5, 8, 0.72);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: var(--z-overlay-high);
 }
 
 .shortcuts-card {
   position: relative;
   width: 580px;
   max-width: 92vw;
-  max-height: 85vh;
+  max-height: min(86vh, 660px);
   border-radius: 18px;
-  padding: 22px 26px;
+  padding: 20px 24px 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   background:
     radial-gradient(65% 45% at 85% 0%, color-mix(in srgb, var(--tide) 9%, transparent), transparent 65%),
     var(--surface-raised);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-lg);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .card-head {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -135,6 +162,10 @@ const shortcuts = [
 }
 
 .shortcuts-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -146,12 +177,24 @@ const shortcuts = [
   gap: 7px;
 }
 
+.cat-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .cat-title {
   margin: 0;
   font: 700 9.5px var(--font-mono);
   color: var(--text-quaternary);
   text-transform: uppercase;
   letter-spacing: 0.12em;
+}
+
+.cat-count {
+  font: 700 9.5px var(--font-mono);
+  color: var(--text-quaternary);
 }
 
 .cat-grid {
@@ -188,9 +231,9 @@ const shortcuts = [
   border-radius: 7px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-bottom-width: 2.5px;
+  border-bottom-width: 2px;
   color: var(--text-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--shadow-xs);
+  box-shadow: inset 0 1px 0 var(--highlight-edge), var(--shadow-xs);
   transition: border-color var(--motion-fast), color var(--motion-fast);
 }
 
@@ -200,6 +243,7 @@ const shortcuts = [
 }
 
 .card-foot {
+  flex: none;
   padding-top: 10px;
   border-top: 1px solid var(--border-subtle);
   text-align: center;

@@ -5,7 +5,65 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="alternate icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#07080a" />
     <title>日程管家 Agenda Butler</title>
+    <script>
+      (function () {
+        try {
+          var bgMap = {
+            midnight: ['#07080a', 0], daylight: ['#f3f4ef', 1], cyber: ['#070b0e', 0], amber: ['#0b0806', 0], aurora: ['#09070d', 0],
+            'shanshui-jiangshan': ['#f4efe4', 1], 'shanshui-huangshan': ['#080c0a', 0], 'shanshui-potala': ['#07100c', 0],
+            'shanshui-guilin': ['#110c08', 0], 'shanshui-sanxia': ['#070b14', 0], 'shanshui-taishan': ['#0e0814', 0],
+            'shanshui-xihu': ['#0a0f07', 0], 'shanshui-lushan': ['#080d11', 0], 'shanshui-jiangnan': ['#eef1ed', 1],
+            'shanshui-emei': ['#080d0c', 0], 'shanshui-dunhuang': ['#f5efe2', 1], 'shanshui-jiuzhaigou': ['#070d10', 0],
+            'shanshui-suzhou': ['#f1f4ee', 1], 'shanshui-zhangjiajie': ['#0c0a0b', 0], 'shanshui-changbai': ['#eff3f8', 1],
+            'shanshui-tianqing': ['#ebf2f1', 1], 'shanshui-qixia': ['#f9f1e9', 1], 'shanshui-erhai': ['#060c13', 0],
+            'shanshui-qingcheng': ['#070e0b', 0]
+          };
+          var pairs = {
+            midnight: 'daylight', daylight: 'midnight', cyber: 'daylight', amber: 'shanshui-dunhuang', aurora: 'shanshui-tianqing',
+            'shanshui-jiangshan': 'shanshui-huangshan', 'shanshui-huangshan': 'shanshui-jiangshan',
+            'shanshui-potala': 'shanshui-changbai', 'shanshui-guilin': 'shanshui-jiangnan',
+            'shanshui-sanxia': 'shanshui-changbai', 'shanshui-taishan': 'shanshui-qixia',
+            'shanshui-xihu': 'shanshui-suzhou', 'shanshui-lushan': 'shanshui-tianqing',
+            'shanshui-jiangnan': 'shanshui-xihu', 'shanshui-emei': 'shanshui-dunhuang',
+            'shanshui-dunhuang': 'shanshui-zhangjiajie', 'shanshui-jiuzhaigou': 'shanshui-tianqing',
+            'shanshui-suzhou': 'shanshui-qingcheng', 'shanshui-zhangjiajie': 'shanshui-qixia',
+            'shanshui-changbai': 'shanshui-erhai', 'shanshui-tianqing': 'shanshui-erhai',
+            'shanshui-qixia': 'shanshui-taishan', 'shanshui-erhai': 'shanshui-tianqing',
+            'shanshui-qingcheng': 'shanshui-suzhou'
+          };
+          var aliases = { obsidian: 'midnight', 'rmb-100': 'midnight', 'rmb-50': 'shanshui-potala', 'rmb-20': 'shanshui-guilin', 'rmb-10': 'shanshui-sanxia', 'rmb-5': 'shanshui-taishan', 'rmb-1': 'shanshui-xihu' };
+          var raw = (localStorage.getItem('agenda_theme') || '').trim();
+          var id = aliases[raw] || raw || 'midnight';
+          if (!bgMap[id]) id = 'midnight';
+          var mode = localStorage.getItem('agenda_theme_mode') || 'manual';
+          if (mode === 'circadian') {
+            var now = new Date();
+            var mins = now.getHours() * 60 + now.getMinutes();
+            var wantLight = mins >= 390 && mins < 1110;
+            if (Boolean(bgMap[id][1]) !== wantLight && pairs[id]) id = pairs[id];
+          } else if (mode === 'system' && window.matchMedia) {
+            var wantLightSys = !window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (Boolean(bgMap[id][1]) !== wantLightSys && pairs[id]) id = pairs[id];
+          }
+          var entry = bgMap[id] || ['#07080a', 0];
+          var scheme = entry[1] ? 'light' : 'dark';
+          var root = document.documentElement;
+          if (id !== 'midnight') root.setAttribute('data-theme', id);
+          root.setAttribute('data-color-scheme', scheme);
+          root.setAttribute('data-theme-polarity', scheme);
+          root.setAttribute('data-theme-group', id.indexOf('shanshui-') === 0 ? 'shanshui' : 'curated');
+          root.setAttribute('data-canvas-intensity', localStorage.getItem('agenda_canvas_intensity') || 'balanced');
+          if (localStorage.getItem('agenda_shanshui_serif') === 'true') root.setAttribute('data-shanshui-serif', 'true');
+          if (localStorage.getItem('agenda_high_contrast') === 'true') root.setAttribute('data-high-contrast', 'true');
+          root.style.colorScheme = scheme;
+          root.style.backgroundColor = entry[0];
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', entry[0]);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

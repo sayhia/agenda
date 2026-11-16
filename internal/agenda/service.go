@@ -8,16 +8,33 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
 
 type AgendaService struct {
-	db *DB
+	db        *DB
+	desktop   *DesktopManager
+	scheduler *Scheduler
 }
 
 func NewAgendaService(db *DB) *AgendaService {
 	return &AgendaService{db: db}
+}
+
+func (s *AgendaService) SetDesktopManager(dm *DesktopManager) {
+	s.desktop = dm
+}
+
+func (s *AgendaService) SetScheduler(sched *Scheduler) {
+	s.scheduler = sched
+}
+
+func (s *AgendaService) notifyDataChanged() {
+	if s.desktop != nil {
+		s.desktop.NotifyDataChanged()
+	}
 }
 
 func (s *AgendaService) GetReminders() ([]Reminder, error) {
@@ -85,7 +102,11 @@ func (s *AgendaService) AddReminder(req CreateReminderRequest) (*Reminder, error
 			req.ScheduledAt = now.Add(15 * time.Minute).Format(time.RFC3339)
 		}
 	}
-	return s.db.CreateReminder(req)
+	created, err := s.db.CreateReminder(req)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return created, err
 }
 
 func (s *AgendaService) UpdateReminder(req UpdateReminderRequest) (*Reminder, error) {
@@ -98,56 +119,88 @@ func (s *AgendaService) UpdateReminder(req UpdateReminderRequest) (*Reminder, er
 	if strings.TrimSpace(req.Title) == "" {
 		return nil, errors.New("标题不能为空")
 	}
-	return s.db.UpdateReminder(req)
+	updated, err := s.db.UpdateReminder(req)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return updated, err
 }
 
 func (s *AgendaService) DeleteReminder(id string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.DeleteReminder(id)
+	err := s.db.DeleteReminder(id)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) BatchDelete(ids []string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.BatchDelete(ids)
+	err := s.db.BatchDelete(ids)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) BatchSetStatus(ids []string, status string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.BatchSetStatus(ids, status)
+	err := s.db.BatchSetStatus(ids, status)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) BatchSetPriority(ids []string, priority string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.BatchSetPriority(ids, priority)
+	err := s.db.BatchSetPriority(ids, priority)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) UpdateSubtasks(id string, subtasks string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.UpdateSubtasks(id, subtasks)
+	err := s.db.UpdateSubtasks(id, subtasks)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) ArchiveOldEndedReminders(days int) (int, error) {
 	if s.db == nil {
 		return 0, errors.New("database not initialized")
 	}
-	return s.db.ArchiveOldEndedReminders(days)
+	count, err := s.db.ArchiveOldEndedReminders(days)
+	if err == nil && count > 0 {
+		s.notifyDataChanged()
+	}
+	return count, err
 }
 
 func (s *AgendaService) ClearDeliveryHistory() error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.ClearDeliveryHistory()
+	err := s.db.ClearDeliveryHistory()
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) BackupDatabase() (string, error) {
@@ -161,7 +214,11 @@ func (s *AgendaService) RestoreDatabase(backupPath string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.RestoreDatabase(backupPath)
+	err := s.db.RestoreDatabase(backupPath)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) GetBackupsList() ([]string, error) {
@@ -190,7 +247,7 @@ func (s *AgendaService) CheckConflict(scheduledAt string, durationMinutes int, e
 	if s.db == nil {
 		return nil, errors.New("database not initialized")
 	}
-	t, err := time.Parse(time.RFC3339, scheduledAt)
+	t, err := parseFlexibleTime(scheduledAt)
 	if err != nil {
 		return nil, fmt.Errorf("invalid time format: %w", err)
 	}
@@ -209,7 +266,7 @@ func (s *AgendaService) CheckConflict(scheduledAt string, durationMinutes int, e
 		if r.ID == excludeID || r.Status != "active" {
 			continue
 		}
-		rt, err := time.Parse(time.RFC3339, r.ScheduledAt)
+		rt, err := parseFlexibleTime(r.ScheduledAt)
 		if err != nil {
 			continue
 		}
@@ -265,6 +322,9 @@ func (s *AgendaService) ImportICS(content string) (int, error) {
 			count++
 		}
 	}
+	if count > 0 {
+		s.notifyDataChanged()
+	}
 	return count, nil
 }
 
@@ -291,14 +351,22 @@ func (s *AgendaService) RestoreReminder(id string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.RestoreReminder(id)
+	err := s.db.RestoreReminder(id)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) PermanentDelete(id string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.PermanentDelete(id)
+	err := s.db.PermanentDelete(id)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) GetTrashReminders() ([]Reminder, error) {
@@ -312,7 +380,11 @@ func (s *AgendaService) EmptyTrash() error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.EmptyTrash()
+	err := s.db.EmptyTrash()
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) CleanExpiredTrash(retentionDays int) (int64, error) {
@@ -333,7 +405,7 @@ func (s *AgendaService) DuplicateReminder(id string, newScheduledAt string) (*Re
 
 	sched := newScheduledAt
 	if strings.TrimSpace(sched) == "" {
-		t, err := time.Parse(time.RFC3339, orig.ScheduledAt)
+		t, err := parseFlexibleTime(orig.ScheduledAt)
 		if err == nil {
 			sched = t.AddDate(0, 0, 1).Format(time.RFC3339)
 		} else {
@@ -353,6 +425,7 @@ func (s *AgendaService) DuplicateReminder(id string, newScheduledAt string) (*Re
 		Priority:        orig.Priority,
 		Tags:            orig.Tags,
 		Subtasks:        orig.Subtasks,
+		IsPinned:        orig.IsPinned,
 	}
 	return s.AddReminder(req)
 }
@@ -365,12 +438,16 @@ func (s *AgendaService) FindOptimalFreeSlot(dateStr string, durationMinutes int)
 		durationMinutes = 30
 	}
 
-	targetDate, err := time.Parse("2006-01-02", dateStr)
+	loc := time.Local
+	targetDate, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(dateStr), loc)
 	if err != nil {
-		targetDate = time.Now()
+		if tFlex, err2 := parseFlexibleTime(dateStr); err2 == nil {
+			targetDate = tFlex.In(loc)
+		} else {
+			targetDate = time.Now().In(loc)
+		}
 	}
 
-	loc := targetDate.Location()
 	dayStart := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 9, 0, 0, 0, loc)
 	dayEnd := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 19, 0, 0, 0, loc)
 
@@ -386,13 +463,14 @@ func (s *AgendaService) FindOptimalFreeSlot(dateStr string, durationMinutes int)
 	var busy []interval
 
 	for _, r := range reminders {
-		if r.Status == "ended" {
+		if r.Status == "ended" || r.Status == "expired" {
 			continue
 		}
-		t, err := time.Parse(time.RFC3339, r.ScheduledAt)
+		t, err := parseFlexibleTime(r.ScheduledAt)
 		if err != nil {
 			continue
 		}
+		t = t.In(loc)
 		dur := r.DurationMinutes
 		if dur <= 0 {
 			dur = 30
@@ -404,8 +482,15 @@ func (s *AgendaService) FindOptimalFreeSlot(dateStr string, durationMinutes int)
 		}
 	}
 
+	sort.Slice(busy, func(i, j int) bool {
+		if busy[i].start.Equal(busy[j].start) {
+			return busy[i].end.Before(busy[j].end)
+		}
+		return busy[i].start.Before(busy[j].start)
+	})
+
 	curr := dayStart
-	now := time.Now()
+	now := time.Now().In(loc)
 	if targetDate.Year() == now.Year() && targetDate.YearDay() == now.YearDay() {
 		if now.After(curr) {
 			curr = now.Add(15 * time.Minute)
@@ -452,20 +537,20 @@ func (s *AgendaService) CheckSimilarReminders(title string, scheduledAt string, 
 	}
 
 	var targetDate string
-	if t, err := time.Parse(time.RFC3339, scheduledAt); err == nil {
-		targetDate = t.Format("2006-01-02")
+	if t, err := parseFlexibleTime(scheduledAt); err == nil {
+		targetDate = t.In(time.Local).Format("2006-01-02")
 	}
 
 	var similar []Reminder
 	for _, r := range all {
-		if r.ID == excludeID || r.Status == "ended" {
+		if r.ID == excludeID || r.Status == "ended" || r.Status == "expired" {
 			continue
 		}
 		rTitle := strings.ToLower(r.Title)
 
 		if targetDate != "" {
-			if t, err := time.Parse(time.RFC3339, r.ScheduledAt); err == nil {
-				if t.Format("2006-01-02") != targetDate {
+			if t, err := parseFlexibleTime(r.ScheduledAt); err == nil {
+				if t.In(time.Local).Format("2006-01-02") != targetDate {
 					continue
 				}
 			}
@@ -489,21 +574,33 @@ func (s *AgendaService) TogglePinReminder(id string) (*Reminder, error) {
 	if s.db == nil {
 		return nil, errors.New("database not initialized")
 	}
-	return s.db.TogglePinReminder(id)
+	updated, err := s.db.TogglePinReminder(id)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return updated, err
 }
 
 func (s *AgendaService) BatchSetPinned(ids []string, pinned bool) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.BatchSetPinned(ids, pinned)
+	err := s.db.BatchSetPinned(ids, pinned)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) BatchAddTag(ids []string, tag string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.BatchAddTag(ids, tag)
+	err := s.db.BatchAddTag(ids, tag)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) CheckTimeConflicts(scheduledAt string, durationMinutes int, excludeID string) ([]Reminder, error) {
@@ -513,7 +610,7 @@ func (s *AgendaService) CheckTimeConflicts(scheduledAt string, durationMinutes i
 	if durationMinutes <= 0 {
 		durationMinutes = 30
 	}
-	targetStart, err := time.Parse(time.RFC3339, scheduledAt)
+	targetStart, err := parseFlexibleTime(scheduledAt)
 	if err != nil {
 		return []Reminder{}, nil
 	}
@@ -526,10 +623,10 @@ func (s *AgendaService) CheckTimeConflicts(scheduledAt string, durationMinutes i
 
 	var conflicts []Reminder
 	for _, r := range all {
-		if r.ID == excludeID || r.Status == "ended" {
+		if r.ID == excludeID || r.Status == "ended" || r.Status == "expired" {
 			continue
 		}
-		rStart, err := time.Parse(time.RFC3339, r.ScheduledAt)
+		rStart, err := parseFlexibleTime(r.ScheduledAt)
 		if err != nil {
 			continue
 		}
@@ -594,6 +691,9 @@ func (s *AgendaService) ImportJSONBackup(jsonContent string) (int, error) {
 			count++
 		}
 	}
+	if count > 0 {
+		s.notifyDataChanged()
+	}
 	return count, nil
 }
 
@@ -636,7 +736,11 @@ func (s *AgendaService) BatchSetSubtasks(ids []string, subtasks string) error {
 	if s.db == nil {
 		return errors.New("database not initialized")
 	}
-	return s.db.BatchSetSubtasks(ids, subtasks)
+	err := s.db.BatchSetSubtasks(ids, subtasks)
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return err
 }
 
 func (s *AgendaService) FindLowDensitySlot(dateStr string, durationMinutes int) (string, error) {
@@ -668,6 +772,9 @@ func (s *AgendaService) ImportCSVContent(content string) (int, error) {
 			count++
 		}
 	}
+	if count > 0 {
+		s.notifyDataChanged()
+	}
 	return count, nil
 }
 
@@ -685,6 +792,60 @@ func (s *AgendaService) CheckDatabaseIntegrity() (string, error) {
 	return s.db.CheckIntegrity()
 }
 
+func (s *AgendaService) findConflictFreeSlot(scheduledAt string, durationMinutes int, excludeID string) (time.Time, bool, error) {
+	dur := durationMinutes
+	if dur <= 0 {
+		dur = 30
+	}
+	conflicts, err := s.CheckTimeConflicts(scheduledAt, dur, excludeID)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	candidate, parseErr := parseFlexibleTime(scheduledAt)
+	if parseErr != nil {
+		candidate = time.Now()
+	}
+	if len(conflicts) == 0 {
+		return candidate, false, nil
+	}
+
+	// Iteratively advance past any overlapping active/paused reminders with a 10-minute buffer
+	for step := 0; step < 20; step++ {
+		stepConflicts, err := s.CheckTimeConflicts(candidate.Format(time.RFC3339), dur, excludeID)
+		if err != nil || len(stepConflicts) == 0 {
+			break
+		}
+		latestEnd := candidate
+		for _, c := range stepConflicts {
+			t, err := parseFlexibleTime(c.ScheduledAt)
+			if err == nil {
+				cDur := c.DurationMinutes
+				if cDur <= 0 {
+					cDur = 30
+				}
+				end := t.Add(time.Duration(cDur) * time.Minute)
+				if end.After(latestEnd) {
+					latestEnd = end
+				}
+			}
+		}
+		candidate = latestEnd.Add(10 * time.Minute)
+	}
+	return candidate, true, nil
+}
+
+// SuggestNextFreeSlot returns the next conflict-free RFC3339 timestamp for a pending schedule draft.
+func (s *AgendaService) SuggestNextFreeSlot(scheduledAt string, durationMinutes int) (string, error) {
+	if s.db == nil {
+		return "", errors.New("database not initialized")
+	}
+	slot, _, err := s.findConflictFreeSlot(scheduledAt, durationMinutes, "")
+	if err != nil {
+		return "", err
+	}
+	return slot.Format(time.RFC3339), nil
+}
+
 func (s *AgendaService) AutoResolveConflict(reminderID string) (*Reminder, error) {
 	if s.db == nil {
 		return nil, errors.New("database not initialized")
@@ -694,29 +855,15 @@ func (s *AgendaService) AutoResolveConflict(reminderID string) (*Reminder, error
 		return nil, errors.New("日程未找到")
 	}
 
-	conflicts, err := s.CheckTimeConflicts(rem.ScheduledAt, rem.DurationMinutes, reminderID)
+	candidate, hadConflict, err := s.findConflictFreeSlot(rem.ScheduledAt, rem.DurationMinutes, reminderID)
 	if err != nil {
 		return nil, err
 	}
-	if len(conflicts) == 0 {
-		return rem, nil // no conflict
+	if !hadConflict {
+		return rem, nil
 	}
 
-	// Find the latest end time among all conflicting reminders
-	latestEnd := time.Now()
-	for _, c := range conflicts {
-		t, err := parseFlexibleTime(c.ScheduledAt)
-		if err == nil {
-			end := t.Add(time.Duration(c.DurationMinutes) * time.Minute)
-			if end.After(latestEnd) {
-				latestEnd = end
-			}
-		}
-	}
-
-	// Shift target reminder to latestEnd + 10 mins buffer
-	newScheduledTime := latestEnd.Add(10 * time.Minute)
-	newScheduledStr := newScheduledTime.Format(time.RFC3339)
+	newScheduledStr := candidate.Format(time.RFC3339)
 
 	updated, err := s.db.UpdateReminder(UpdateReminderRequest{
 		ID:              rem.ID,
@@ -734,6 +881,9 @@ func (s *AgendaService) AutoResolveConflict(reminderID string) (*Reminder, error
 		Subtasks:        rem.Subtasks,
 		IsPinned:        rem.IsPinned,
 	})
+	if err == nil {
+		s.notifyDataChanged()
+	}
 	return updated, err
 }
 
@@ -749,6 +899,7 @@ func (s *AgendaService) GetDatabaseStats() (map[string]interface{}, error) {
 	total := len(reminders)
 	active := 0
 	ended := 0
+	expired := 0
 	paused := 0
 	overdue := 0
 	now := time.Now()
@@ -761,6 +912,9 @@ func (s *AgendaService) GetDatabaseStats() (map[string]interface{}, error) {
 			if err == nil && t.Before(now) {
 				overdue++
 			}
+		case "expired":
+			expired++
+			overdue++
 		case "ended":
 			ended++
 		case "paused":
@@ -768,23 +922,322 @@ func (s *AgendaService) GetDatabaseStats() (map[string]interface{}, error) {
 		}
 	}
 
+	trashItems, _ := s.db.GetTrashReminders()
 	integrity, _ := s.db.CheckIntegrity()
 
-	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, ".agenda", "agenda.db")
+	dbPath := s.db.dbPath
+	if strings.TrimSpace(dbPath) == "" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, ".agenda", "agenda.db")
+	}
 	var fileSize int64 = 0
 	if fi, err := os.Stat(dbPath); err == nil {
 		fileSize = fi.Size()
 	}
 
 	return map[string]interface{}{
-		"total":      total,
-		"active":     active,
-		"ended":      ended,
-		"paused":     paused,
-		"overdue":    overdue,
-		"file_size":  fileSize,
-		"integrity":  integrity,
-		"db_path":    dbPath,
+		"total":       total,
+		"active":      active,
+		"ended":       ended,
+		"expired":     expired,
+		"paused":      paused,
+		"overdue":     overdue,
+		"trash_count": len(trashItems),
+		"file_size":   fileSize,
+		"integrity":   integrity,
+		"db_path":     dbPath,
 	}, nil
+}
+
+// SnoozeReminder pushes an active or expired reminder forward by N minutes (from max(now, scheduled_at))
+// and ensures its status is set to active.
+func (s *AgendaService) SnoozeReminder(id string, minutes int) (*Reminder, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized")
+	}
+	if minutes <= 0 {
+		minutes = 10
+	}
+	rem, err := s.db.GetReminder(id)
+	if err != nil || rem == nil {
+		return nil, errors.New("日程未找到")
+	}
+	base := time.Now()
+	if t, err := parseFlexibleTime(rem.ScheduledAt); err == nil && t.After(base) {
+		base = t
+	}
+	nextAt := base.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339)
+	updated, err := s.db.UpdateReminder(UpdateReminderRequest{
+		ID:              rem.ID,
+		Title:           rem.Title,
+		ScheduledAt:     nextAt,
+		RepeatRule:      rem.RepeatRule,
+		LeadMinutes:     rem.LeadMinutes,
+		Notes:           rem.Notes,
+		DurationMinutes: rem.DurationMinutes,
+		Timezone:        rem.Timezone,
+		Prompt:          rem.Prompt,
+		Status:          "active",
+		Priority:        rem.Priority,
+		Tags:            rem.Tags,
+		Subtasks:        rem.Subtasks,
+		IsPinned:        rem.IsPinned,
+	})
+	if err == nil {
+		s.notifyDataChanged()
+	}
+	return updated, err
+}
+
+func (s *AgendaService) GetDesktopPreferences() (DesktopPreferences, error) {
+	if s.db == nil {
+		return DefaultDesktopPreferences(), errors.New("database not initialized")
+	}
+	return LoadDesktopPreferences(s.db), nil
+}
+
+func (s *AgendaService) SaveDesktopPreferences(prefs DesktopPreferences) (DesktopPreferences, error) {
+	if s.db == nil {
+		return DefaultDesktopPreferences(), errors.New("database not initialized")
+	}
+	normalized := NormalizeDesktopPreferences(prefs)
+	if err := SaveDesktopPreferences(s.db, normalized); err != nil {
+		return normalized, err
+	}
+	if s.desktop != nil {
+		s.desktop.NotifyPreferencesChanged()
+	} else if s.scheduler != nil {
+		s.scheduler.SetPaused(normalized.SchedulerPaused)
+	}
+	return normalized, nil
+}
+
+func (s *AgendaService) GetDesktopRuntimeStatus() (DesktopRuntimeStatus, error) {
+	if s.desktop != nil {
+		return s.desktop.GetRuntimeStatus(), nil
+	}
+	prefs := LoadDesktopPreferences(s.db)
+	var schedStatus SchedulerStatus
+	if s.scheduler != nil {
+		schedStatus = s.scheduler.GetStatus()
+	}
+	return DesktopRuntimeStatus{
+		Preferences: prefs,
+		Scheduler:   schedStatus,
+		Windows:     []WindowSummary{},
+	}, nil
+}
+
+func (s *AgendaService) OpenDesktopWindow(kind string, param string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.OpenWindow(kind, param)
+}
+
+func (s *AgendaService) ToggleDesktopWindow(kind string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.ToggleWindow(kind)
+}
+
+func (s *AgendaService) CloseDesktopWindow(name string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.CloseWindow(name)
+}
+
+func (s *AgendaService) FocusDesktopWindow(name string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.FocusWindow(name)
+}
+
+func (s *AgendaService) SetDesktopWindowAlwaysOnTop(name string, onTop bool) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.SetWindowAlwaysOnTop(name, onTop)
+}
+
+func (s *AgendaService) SetTrayPopoverPinned(pinned bool) error {
+	if s.desktop == nil {
+		return nil
+	}
+	s.desktop.SetPopoverPinned(pinned)
+	return nil
+}
+
+func (s *AgendaService) SetSchedulerPaused(paused bool) error {
+	if s.desktop != nil {
+		return s.desktop.SetSchedulerPaused(paused)
+	}
+	if s.scheduler != nil {
+		s.scheduler.SetPaused(paused)
+	}
+	if s.db != nil {
+		p := LoadDesktopPreferences(s.db)
+		p.SchedulerPaused = paused
+		return SaveDesktopPreferences(s.db, p)
+	}
+	return nil
+}
+
+func (s *AgendaService) PauseSchedulerFor(minutes int) error {
+	if s.desktop != nil {
+		return s.desktop.PauseSchedulerFor(minutes)
+	}
+	if s.scheduler != nil {
+		s.scheduler.PauseFor(minutes)
+	}
+	return nil
+}
+
+func (s *AgendaService) SetAutoStartEnabled(enabled bool) (AutoStartInfo, error) {
+	if s.desktop == nil {
+		return AutoStartInfo{Supported: false}, errors.New("desktop runtime not available")
+	}
+	return s.desktop.SetAutoStartEnabled(enabled)
+}
+
+func (s *AgendaService) UpdateFocusTrayStatus(running bool, mode string, clock string, title string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	s.desktop.UpdateFocusState(FocusTrayState{
+		Running: running,
+		Mode:    mode,
+		Clock:   clock,
+		Title:   title,
+	})
+	return nil
+}
+
+func (s *AgendaService) SendMorningBriefingNow() (string, error) {
+	if s.scheduler != nil {
+		return s.scheduler.SendMorningBriefingDigest()
+	}
+	if s.db == nil {
+		return "", errors.New("database not initialized")
+	}
+	sched := NewScheduler(s.db, nil)
+	return sched.SendMorningBriefingDigest()
+}
+
+func (s *AgendaService) TriggerOpenInMain(reminderID string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.TriggerOpenInMain(reminderID)
+}
+
+// SendDesktopNotification dispatches a native OS notification unless Do-Not-Disturb is active.
+func (s *AgendaService) SendDesktopNotification(title string, body string) error {
+	if s.db != nil {
+		prefs := LoadDesktopPreferences(s.db)
+		if IsWithinDND(prefs, time.Now()) {
+			return nil
+		}
+	}
+	if strings.TrimSpace(title) == "" {
+		title = "Agenda Butler"
+	}
+	dispatchDesktopNotification(title, body)
+	return nil
+}
+
+func (s *AgendaService) RefreshTrayMenu() error {
+	if s.desktop != nil {
+		s.desktop.UpdateTrayStatus()
+		s.desktop.RebuildTrayMenu()
+	}
+	return nil
+}
+
+func (s *AgendaService) SnoozeAllOverdue(minutes int) (int, error) {
+	if s.db == nil {
+		return 0, errors.New("database not initialized")
+	}
+	if minutes <= 0 {
+		minutes = 15
+	}
+	overdue, err := s.db.GetOverdueReminders()
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	nextAt := time.Now().Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339)
+	for _, rem := range overdue {
+		_, err := s.db.UpdateReminder(UpdateReminderRequest{
+			ID:              rem.ID,
+			Title:           rem.Title,
+			ScheduledAt:     nextAt,
+			RepeatRule:      rem.RepeatRule,
+			LeadMinutes:     rem.LeadMinutes,
+			Notes:           rem.Notes,
+			DurationMinutes: rem.DurationMinutes,
+			Timezone:        rem.Timezone,
+			Prompt:          rem.Prompt,
+			Status:          "active",
+			Priority:        rem.Priority,
+			Tags:            rem.Tags,
+			Subtasks:        rem.Subtasks,
+			IsPinned:        rem.IsPinned,
+		})
+		if err == nil {
+			count++
+		}
+	}
+	if count > 0 {
+		s.notifyDataChanged()
+	}
+	return count, nil
+}
+
+func (s *AgendaService) GetRecentDeliveries(limit int) ([]RecentDeliveryItem, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized")
+	}
+	return s.db.GetRecentDeliveries(limit)
+}
+
+func (s *AgendaService) ResizeDesktopWindow(name string, width, height int) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.ResizeWindow(name, width, height)
+}
+
+func (s *AgendaService) ResetDesktopWindowBounds(name string) error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.ResetWindowBounds(name)
+}
+
+func (s *AgendaService) ResetAllDesktopWindowBounds() error {
+	if s.desktop == nil {
+		return nil
+	}
+	return s.desktop.ResetAllWindowBounds()
+}
+
+func (s *AgendaService) HideAllAuxiliaryWindows() error {
+	if s.desktop != nil {
+		s.desktop.HideAllAuxiliaryWindows()
+	}
+	return nil
+}
+
+func (s *AgendaService) TriggerImmediateSchedulerCheck() error {
+	if s.scheduler != nil {
+		s.scheduler.TriggerImmediateCheck()
+	}
+	if s.desktop != nil {
+		s.desktop.NotifyDataChanged()
+	}
+	return nil
 }

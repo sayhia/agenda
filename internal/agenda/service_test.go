@@ -2,6 +2,8 @@ package agenda
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -485,8 +487,8 @@ func TestSchedulerTriggerPreservesPinAndCount(t *testing.T) {
 	}
 
 	gotOnce, _ := svc.GetReminder(rOnce.ID)
-	if !gotOnce.IsPinned || gotOnce.Status != "ended" {
-		t.Errorf("expected single triggered reminder to end with IsPinned=true, got pinned=%v status=%s", gotOnce.IsPinned, gotOnce.Status)
+	if !gotOnce.IsPinned || gotOnce.Status != "expired" {
+		t.Errorf("expected single triggered reminder to be marked expired with IsPinned=true, got pinned=%v status=%s", gotOnce.IsPinned, gotOnce.Status)
 	}
 }
 
@@ -789,5 +791,554 @@ func TestCleanExpiredTrashAndRelativeDuplication(t *testing.T) {
 	}
 	if cloned.Tags != activeRem.Tags {
 		t.Errorf("expected cloned tags %s, got %s", activeRem.Tags, cloned.Tags)
+	}
+}
+
+func TestUpdateReminderPreservesPinAndGetStatsExcludesTrash(t *testing.T) {
+	svc, db := setupTestDB(t)
+
+	now := time.Now()
+	r1, err := svc.AddReminder(CreateReminderRequest{
+		Title:       "置顶事项更新验证",
+		ScheduledAt: now.Add(10 * time.Minute).UTC().Format(time.RFC3339),
+		IsPinned:    true,
+		Priority:    "p0",
+	})
+	if err != nil {
+		t.Fatalf("AddReminder r1 failed: %v", err)
+	}
+
+	updated, err := svc.UpdateReminder(UpdateReminderRequest{
+		ID:          r1.ID,
+		Title:       "置顶事项已改名",
+		ScheduledAt: r1.ScheduledAt,
+		Status:      "active",
+		Priority:    "p0",
+		IsPinned:    true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateReminder failed: %v", err)
+	}
+	if !updated.IsPinned {
+		t.Errorf("expected UpdateReminder return struct to preserve IsPinned=true")
+	}
+
+	// Add second reminder and move it to trash
+	r2, err := svc.AddReminder(CreateReminderRequest{
+		Title:       "即将删除事项",
+		ScheduledAt: now.Add(5 * time.Minute).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("AddReminder r2 failed: %v", err)
+	}
+	if err := svc.DeleteReminder(r2.ID); err != nil {
+		t.Fatalf("DeleteReminder r2 failed: %v", err)
+	}
+
+	stats, err := db.GetStats()
+	if err != nil {
+		t.Fatalf("GetStats failed: %v", err)
+	}
+	if stats.TotalReminders != 1 || stats.ActiveReminders != 1 {
+		t.Errorf("expected stats to exclude trashed reminder (total=1, active=1), got total=%d active=%d", stats.TotalReminders, stats.ActiveReminders)
+	}
+	if stats.NearDueReminders != 1 {
+		t.Errorf("expected NearDueReminders=1 for UTC scheduled reminder in 10m, got %d", stats.NearDueReminders)
+	}
+}
+
+func TestSchedulerLeadTimePreNotificationAndMonthlyRecurrence(t *testing.T) {
+	svc, db := setupTestDB(t)
+	origNotify := dispatchDesktopNotification
+	var notified []string
+	dispatchDesktopNotification = func(title, message string) {
+		notified = append(notified, title)
+	}
+	t.Cleanup(func() { dispatchDesktopNotification = origNotify })
+
+	// Reminder due in 10 minutes with 15-minute lead warning
+	in10Min := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+	rLead, err := db.CreateReminder(CreateReminderRequest{
+		Title:       "提前预警架构会",
+		ScheduledAt: in10Min,
+		LeadMinutes: 15,
+		Priority:    "p1",
+	})
+	if err != nil {
+		t.Fatalf("CreateReminder failed: %v", err)
+	}
+
+	sched := NewScheduler(db, nil)
+	sched.checkReminders()
+	if len(notified) != 1 || !strings.Contains(notified[0], "即将开始") {
+		t.Fatalf("expected 1 lead pre-notification, got %v", notified)
+	}
+	// Second check should not duplicate the pre-notification
+	sched.checkReminders()
+	if len(notified) != 1 {
+		t.Errorf("expected no duplicate lead pre-notification on second tick, got %d", len(notified))
+	}
+	gotLead, _ := svc.GetReminder(rLead.ID)
+	if gotLead.Status != "active" {
+		t.Errorf("expected reminder to remain active after lead pre-notification, got %s", gotLead.Status)
+	}
+
+	// Test Monthly BYDAY=-1FR (last Friday of month) and BYMONTHDAY=15
+	start := time.Date(2026, 10, 30, 16, 0, 0, 0, time.UTC) // Last Friday of Oct 2026
+	after := time.Date(2026, 10, 30, 16, 1, 0, 0, time.UTC)
+	nextLastFri := calculateNextOccurrence(start, "FREQ=MONTHLY;BYDAY=-1FR", after)
+	// Last Friday of Nov 2026 is Nov 27, 2026
+	if nextLastFri.Year() != 2026 || nextLastFri.Month() != time.November || nextLastFri.Day() != 27 || nextLastFri.Weekday() != time.Friday {
+		t.Errorf("expected 2026-11-27 (last Friday of Nov 2026), got %v (%s)", nextLastFri, nextLastFri.Weekday())
+	}
+
+	next15th := calculateNextOccurrence(start, "FREQ=MONTHLY;BYMONTHDAY=15", after)
+	if next15th.Year() != 2026 || next15th.Month() != time.November || next15th.Day() != 15 {
+		t.Errorf("expected 2026-11-15, got %v", next15th)
+	}
+}
+
+func TestICSTriggerDurationsAndSkipDeleted(t *testing.T) {
+	if mins := parseICSTriggerMinutes("-P1D"); mins != 1440 {
+		t.Errorf("expected -P1D = 1440, got %d", mins)
+	}
+	if mins := parseICSTriggerMinutes("-PT1H30M"); mins != 90 {
+		t.Errorf("expected -PT1H30M = 90, got %d", mins)
+	}
+	if mins := parseICSTriggerMinutes("TRIGGER;VALUE=DURATION:-PT25M"); mins != 25 {
+		t.Errorf("expected TRIGGER;VALUE=DURATION:-PT25M = 25, got %d", mins)
+	}
+
+	exported := ExportICS([]Reminder{
+		{ID: "active-1", Title: "保留日程", ScheduledAt: time.Now().Format(time.RFC3339)},
+		{ID: "trashed-1", Title: "已删日程", ScheduledAt: time.Now().Format(time.RFC3339), DeletedAt: time.Now().Format(time.RFC3339)},
+	})
+	if !strings.Contains(exported, "保留日程") || strings.Contains(exported, "已删日程") {
+		t.Errorf("expected ExportICS to include active and exclude soft-deleted items, got:\n%s", exported)
+	}
+}
+
+func TestBiweeklyRecurrenceAndCascadingAutoResolve(t *testing.T) {
+	// 1. Biweekly single BYDAY: Friday 2026-11-13 -> Friday 2026-11-27 (+14d)
+	startFri := time.Date(2026, 11, 13, 16, 0, 0, 0, time.UTC)
+	afterFri := time.Date(2026, 11, 13, 16, 1, 0, 0, time.UTC)
+	nextBiweekly := calculateNextOccurrence(startFri, "FREQ=WEEKLY;INTERVAL=2;BYDAY=FR", afterFri)
+	if nextBiweekly.Year() != 2026 || nextBiweekly.Month() != time.November || nextBiweekly.Day() != 27 {
+		t.Errorf("expected biweekly Friday 2026-11-27, got %v", nextBiweekly)
+	}
+
+	// 2. Biweekly multi BYDAY: Monday 2026-11-09 with BYDAY=MO,FR
+	startMon := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
+	afterMon := time.Date(2026, 11, 9, 10, 1, 0, 0, time.UTC)
+	sameWeekFri := calculateNextOccurrence(startMon, "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR", afterMon)
+	if sameWeekFri.Day() != 13 || sameWeekFri.Weekday() != time.Friday {
+		t.Errorf("expected same-week Friday 2026-11-13, got %v", sameWeekFri)
+	}
+	nextCycleMon := calculateNextOccurrence(sameWeekFri, "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR", sameWeekFri.Add(time.Minute))
+	if nextCycleMon.Day() != 23 || nextCycleMon.Weekday() != time.Monday {
+		t.Errorf("expected next biweekly cycle Monday 2026-11-23, got %v", nextCycleMon)
+	}
+
+	// 3. Cascading AutoResolveConflict + UpdateReminder CreatedAt preservation + local FindOptimalFreeSlot
+	svc, _ := setupTestDB(t)
+	base := time.Now().Add(3 * time.Hour).Truncate(time.Minute)
+
+	r1, err := svc.AddReminder(CreateReminderRequest{
+		Title:           "第一场评审",
+		ScheduledAt:     base.Format(time.RFC3339),
+		DurationMinutes: 60, // base .. base+60m
+	})
+	if err != nil {
+		t.Fatalf("AddReminder r1 failed: %v", err)
+	}
+	// r2 starts 5m after r1 ends (base+65m .. base+95m), so base+70m would collide with r2!
+	_, err = svc.AddReminder(CreateReminderRequest{
+		Title:           "紧接的第二场评审",
+		ScheduledAt:     base.Add(65 * time.Minute).Format(time.RFC3339),
+		DurationMinutes: 30,
+	})
+	if err != nil {
+		t.Fatalf("AddReminder r2 failed: %v", err)
+	}
+	r3, err := svc.AddReminder(CreateReminderRequest{
+		Title:           "待顺延事项",
+		ScheduledAt:     base.Add(15 * time.Minute).Format(time.RFC3339),
+		DurationMinutes: 30,
+	})
+	if err != nil {
+		t.Fatalf("AddReminder r3 failed: %v", err)
+	}
+
+	resolved, err := svc.AutoResolveConflict(r3.ID)
+	if err != nil {
+		t.Fatalf("AutoResolveConflict failed: %v", err)
+	}
+	if resolved.CreatedAt == "" {
+		t.Errorf("expected UpdateReminder/AutoResolveConflict to preserve non-empty CreatedAt")
+	}
+	remConflicts, _ := svc.CheckTimeConflicts(resolved.ScheduledAt, resolved.DurationMinutes, r3.ID)
+	if len(remConflicts) != 0 {
+		t.Errorf("expected 0 remaining conflicts after cascading AutoResolveConflict, got %d", len(remConflicts))
+	}
+
+	// Verify FindOptimalFreeSlot uses local timezone (09:00 local on a future date)
+	futureDate := time.Now().In(time.Local).AddDate(0, 0, 10).Format("2006-01-02")
+	slotStr, err := svc.FindOptimalFreeSlot(futureDate, 45)
+	if err != nil {
+		t.Fatalf("FindOptimalFreeSlot failed: %v", err)
+	}
+	slotTime, err := parseFlexibleTime(slotStr)
+	if err != nil {
+		t.Fatalf("failed to parse slotStr %q: %v", slotStr, err)
+	}
+	if slotTime.In(time.Local).Hour() != 9 || slotTime.In(time.Local).Minute() != 0 {
+		t.Errorf("expected local 09:00 free slot on empty future day, got %s (raw %s)", slotTime.In(time.Local).Format("15:04"), slotStr)
+	}
+	_ = r1
+}
+
+func TestCSVLosslessRoundtripAndOfflineAIChatActions(t *testing.T) {
+	svc, db := setupTestDB(t)
+	future := time.Now().Add(2 * time.Hour).Truncate(time.Second).Format(time.RFC3339)
+
+	orig, err := svc.AddReminder(CreateReminderRequest{
+		Title:           "全字段CSV往返验证",
+		ScheduledAt:     future,
+		RepeatRule:      "FREQ=MONTHLY;BYMONTHDAY=-1",
+		Priority:        "p1",
+		Tags:            "财务,月结",
+		DurationMinutes: 75,
+		LeadMinutes:     20,
+		Notes:           "核对月度账单",
+		Subtasks:        `[{"id":"s1","title":"导出流水","done":true}]`,
+		IsPinned:        true,
+	})
+	if err != nil {
+		t.Fatalf("AddReminder failed: %v", err)
+	}
+
+	csvStr, err := svc.ExportCSV()
+	if err != nil {
+		t.Fatalf("ExportCSV failed: %v", err)
+	}
+	imported, err := ImportCSV(csvStr)
+	if err != nil || len(imported) != 1 {
+		t.Fatalf("ImportCSV failed: len=%d err=%v", len(imported), err)
+	}
+	got := imported[0]
+	if got.DurationMinutes != 75 || got.LeadMinutes != 20 || !got.IsPinned || !strings.Contains(got.Subtasks, "导出流水") {
+		t.Errorf("expected lossless CSV roundtrip (dur=75, lead=20, pinned=true, subtasks), got %+v", got)
+	}
+	_ = orig
+
+	// Test BYMONTHDAY=-1 recurrence across Jan 31 -> Feb 28 (2026)
+	jan31 := time.Date(2026, 1, 31, 17, 0, 0, 0, time.UTC)
+	febLast := calculateNextOccurrence(jan31, "FREQ=MONTHLY;BYMONTHDAY=-1", jan31.Add(time.Minute))
+	if febLast.Month() != time.February || febLast.Day() != 28 {
+		t.Errorf("expected 2026-02-28 for BYMONTHDAY=-1 after Jan 31, got %v", febLast)
+	}
+
+	// Test offline AI assistant responses for overdue, free slot, and quick create
+	past := time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
+	_, _ = db.db.Exec(`
+		INSERT INTO reminders (id, title, scheduled_at, status, priority, created_at, updated_at)
+		VALUES ('overdue-ai-1', '逾期架构评审', ?, 'active', 'p0', ?, ?)
+	`, past, past, past)
+
+	overdueReply, err := svc.ChatWithAI([]AIChatMessage{{Role: "user", Content: "帮我看看有哪些逾期任务"}})
+	if err != nil || !strings.Contains(overdueReply, "agenda-action") || !strings.Contains(overdueReply, "snooze") {
+		t.Errorf("expected offline overdue query to include snooze agenda-action, got:\n%s", overdueReply)
+	}
+
+	freeReply, err := svc.ChatWithAI([]AIChatMessage{{Role: "user", Content: "今天什么时候有空闲时段"}})
+	if err != nil || !strings.Contains(freeReply, "agenda-action") || !strings.Contains(freeReply, "深度专注块") {
+		t.Errorf("expected offline free-slot query to include create agenda-action, got:\n%s", freeReply)
+	}
+
+	createReply, err := svc.ChatWithAI([]AIChatMessage{{Role: "user", Content: "提醒我提交周报"}})
+	if err != nil || !strings.Contains(createReply, "agenda-action") || !strings.Contains(createReply, "提交周报") {
+		t.Errorf("expected offline remind query to include create agenda-action, got:\n%s", createReply)
+	}
+}
+
+func TestPhase5BatchICSCSVAIEnhancements(t *testing.T) {
+	svc, db := setupTestDB(t)
+	future := time.Now().Add(3 * time.Hour).Truncate(time.Second).Format(time.RFC3339)
+
+	r1, _ := svc.AddReminder(CreateReminderRequest{Title: "事务批量测试A", ScheduledAt: future, Priority: "p0"})
+	r2, _ := svc.AddReminder(CreateReminderRequest{Title: "事务批量测试B", ScheduledAt: future, Priority: "p2"})
+
+	if err := db.BatchSetPinned([]string{r1.ID, r2.ID}, true); err != nil {
+		t.Fatalf("BatchSetPinned failed: %v", err)
+	}
+	if err := db.BatchAddTag([]string{r1.ID, r2.ID}, "冲刺"); err != nil {
+		t.Fatalf("BatchAddTag failed: %v", err)
+	}
+	got1, _ := db.GetReminder(r1.ID)
+	got2, _ := db.GetReminder(r2.ID)
+	if !got1.IsPinned || !got2.IsPinned || !strings.Contains(got1.Tags, "冲刺") || !strings.Contains(got2.Tags, "冲刺") {
+		t.Errorf("expected pinned=true and tag '冲刺' on both reminders, got %+v / %+v", got1, got2)
+	}
+
+	// ICS DURATION parsing and empty-summary skipping
+	icsSample := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:架构对齐会\r\nDTSTART:20261120T090000Z\r\nDURATION:PT1H15M\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:   \r\nDTSTART:20261120T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	icsReqs, err := ImportICS(icsSample)
+	if err != nil || len(icsReqs) != 1 || icsReqs[0].DurationMinutes != 75 {
+		t.Fatalf("expected 1 ICS event with DurationMinutes=75, got len=%d reqs=%+v err=%v", len(icsReqs), icsReqs, err)
+	}
+
+	// CSV "无" repeat normalization
+	csvSample := "ID,标题,提醒时间,状态,优先级,重复规则,提前提醒(分),持续时长(分),标签,备注,子任务,是否置顶\n1,导出验证,2026-11-20T10:00:00Z,active,p1,无,10,45,研发,,,是\n"
+	csvReqs, err := ImportCSV(csvSample)
+	if err != nil || len(csvReqs) != 1 || csvReqs[0].RepeatRule != "" || !csvReqs[0].IsPinned {
+		t.Fatalf("expected CSV '无' repeat normalized to '', got %+v err=%v", csvReqs, err)
+	}
+
+	// Offline AI workload/P0 query
+	workloadReply, err := svc.ChatWithAI([]AIChatMessage{{Role: "user", Content: "看看当前负荷和P0任务"}})
+	if err != nil || !strings.Contains(workloadReply, "当前待办负荷概览") || !strings.Contains(workloadReply, "事务批量测试A") {
+		t.Errorf("expected offline workload/P0 summary, got:\n%s", workloadReply)
+	}
+
+	// PolishReminderWithAI inline #tag extraction
+	polished, err := svc.PolishReminderWithAI("准备 #季度复盘 #重点 材料\n- [ ] 汇总数据")
+	if err != nil {
+		t.Fatalf("PolishReminderWithAI failed: %v", err)
+	}
+	if strings.Contains(polished.Title, "#") || len(polished.Tags) < 2 || len(polished.Subtasks) != 1 {
+		t.Errorf("expected #tags extracted and stripped from title, got %+v", polished)
+	}
+}
+
+func TestSchedulerMarksExpiredNotCompleted(t *testing.T) {
+	svc, db := setupTestDB(t)
+	origNotify := dispatchDesktopNotification
+	dispatchDesktopNotification = func(title, message string) {}
+	t.Cleanup(func() { dispatchDesktopNotification = origNotify })
+
+	past := time.Now().Add(-5 * time.Minute).Format(time.RFC3339)
+	rSingle, err := db.CreateReminder(CreateReminderRequest{
+		Title:       "过期单次事项",
+		ScheduledAt: past,
+		Priority:    "p1",
+	})
+	if err != nil {
+		t.Fatalf("create single reminder failed: %v", err)
+	}
+
+	rLastRepeat, err := db.CreateReminder(CreateReminderRequest{
+		Title:       "最后一次循环事项",
+		ScheduledAt: past,
+		RepeatRule:  "FREQ=DAILY;COUNT=1",
+		Priority:    "p2",
+	})
+	if err != nil {
+		t.Fatalf("create repeat reminder failed: %v", err)
+	}
+
+	rUntilExpired, err := db.CreateReminder(CreateReminderRequest{
+		Title:       "截至日已到循环事项",
+		ScheduledAt: past,
+		RepeatRule:  fmt.Sprintf("FREQ=DAILY;UNTIL=%s", time.Now().Add(1*time.Hour).UTC().Format("20060102T150405Z")),
+		Priority:    "p2",
+	})
+	if err != nil {
+		t.Fatalf("create until reminder failed: %v", err)
+	}
+
+	rEnded, err := db.CreateReminder(CreateReminderRequest{
+		Title:       "用户主动完成事项",
+		ScheduledAt: time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("create ended reminder failed: %v", err)
+	}
+	_, err = svc.UpdateReminder(UpdateReminderRequest{
+		ID:          rEnded.ID,
+		Title:       rEnded.Title,
+		ScheduledAt: rEnded.ScheduledAt,
+		Status:      "ended",
+	})
+	if err != nil {
+		t.Fatalf("mark ended failed: %v", err)
+	}
+
+	sched := NewScheduler(db, nil)
+	sched.checkReminders()
+
+	for _, id := range []string{rSingle.ID, rLastRepeat.ID, rUntilExpired.ID} {
+		got, err := svc.GetReminder(id)
+		if err != nil {
+			t.Fatalf("GetReminder(%s) failed: %v", id, err)
+		}
+		if got.Status != "expired" {
+			t.Errorf("expected reminder %s (%s) status=expired, got %q", id, got.Title, got.Status)
+		}
+		history, err := db.GetDeliveryHistory(id)
+		if err != nil {
+			t.Fatalf("GetDeliveryHistory(%s) failed: %v", id, err)
+		}
+		hasExpiredRecord := false
+		for _, rec := range history {
+			if rec.Status == "completed" {
+				t.Errorf("reminder %s should not record completed delivery status when expired", id)
+			}
+			if rec.Status == "expired" {
+				hasExpiredRecord = true
+			}
+		}
+		if !hasExpiredRecord {
+			t.Errorf("expected reminder %s delivery history to include status='expired', got %+v", id, history)
+		}
+	}
+
+	overdue, err := svc.GetOverdueReminders()
+	if err != nil {
+		t.Fatalf("GetOverdueReminders failed: %v", err)
+	}
+	if len(overdue) != 3 {
+		t.Errorf("expected 3 expired reminders in GetOverdueReminders (excluding ended), got %d", len(overdue))
+	}
+
+	stats, err := db.GetStats()
+	if err != nil {
+		t.Fatalf("GetStats failed: %v", err)
+	}
+	if stats.ExpiredReminders != 3 || stats.EndedReminders != 1 || stats.ActiveReminders != 0 {
+		t.Errorf("unexpected stats: %+v", stats)
+	}
+
+	dbStats, err := svc.GetDatabaseStats()
+	if err != nil {
+		t.Fatalf("GetDatabaseStats failed: %v", err)
+	}
+	if dbStats["expired"] != 3 || dbStats["ended"] != 1 || dbStats["overdue"] != 3 {
+		t.Errorf("unexpected GetDatabaseStats: %+v", dbStats)
+	}
+}
+
+func TestHardenedDBCSVICSAndAIValidation(t *testing.T) {
+	svc, db := setupTestDB(t)
+
+	// 1. UpdateReminder on non-existent ID must return error
+	if _, err := db.UpdateReminder(UpdateReminderRequest{ID: "rem-missing", Title: "nope"}); err == nil {
+		t.Errorf("expected error updating non-existent reminder")
+	}
+
+	// 2. GetAIChatHistory returns latest 100 messages in chronological order and preserves created_at on update
+	for i := 0; i < 105; i++ {
+		if err := db.SaveAIChatMessage(fmt.Sprintf("msg-%03d", i), "user", fmt.Sprintf("content-%03d", i), ""); err != nil {
+			t.Fatalf("SaveAIChatMessage %d failed: %v", i, err)
+		}
+	}
+	if err := db.SaveAIChatMessage("msg-100", "user", "updated-content-100", ""); err != nil {
+		t.Fatalf("SaveAIChatMessage update failed: %v", err)
+	}
+	hist, err := db.GetAIChatHistory()
+	if err != nil {
+		t.Fatalf("GetAIChatHistory failed: %v", err)
+	}
+	if len(hist) != 100 {
+		t.Fatalf("expected 100 chat history records, got %d", len(hist))
+	}
+	if hist[0].ID != "msg-005" || hist[len(hist)-1].ID != "msg-104" {
+		t.Errorf("unexpected history window: first=%s last=%s", hist[0].ID, hist[len(hist)-1].ID)
+	}
+	foundUpdated100 := false
+	for _, h := range hist {
+		if h.ID == "msg-100" && h.Content == "updated-content-100" {
+			foundUpdated100 = true
+		}
+	}
+	if !foundUpdated100 {
+		t.Errorf("expected updated msg-100 content to be preserved in place")
+	}
+
+	// 3. CSV headerless with rem- hyphenated ID prefix & headerMap empty title skip
+	csvData := "rem-abc12345,发布复盘,2026-11-20T10:00:00+08:00,FREQ=DAILY,p1,工作,45,10,Asia/Shanghai,备注内容,[],active,是\n"
+	csvItems, err := ImportCSV(csvData)
+	if err != nil || len(csvItems) != 1 {
+		t.Fatalf("ImportCSV rem- prefix failed: len=%d err=%v", len(csvItems), err)
+	}
+	if csvItems[0].Title != "发布复盘" || csvItems[0].Priority != "p1" || !csvItems[0].IsPinned {
+		t.Errorf("unexpected parsed CSV item: %+v", csvItems[0])
+	}
+	csvWithEmptyTitle := "id,title,scheduled_at\nrem-999,,2026-11-20T10:00:00+08:00\n"
+	emptyItems, err := ImportCSV(csvWithEmptyTitle)
+	if err != nil || len(emptyItems) != 0 {
+		t.Errorf("expected empty title row with id header to be skipped, got %+v err=%v", emptyItems, err)
+	}
+
+	// 4. ICS DTEND appearing before DTSTART still computes duration
+	icsContent := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:逆序时间测试\r\nDTEND:20261120T113000Z\r\nDTSTART:20261120T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	icsEvents, err := ImportICS(icsContent)
+	if err != nil || len(icsEvents) != 1 {
+		t.Fatalf("ImportICS failed: len=%d err=%v", len(icsEvents), err)
+	}
+	if icsEvents[0].DurationMinutes != 90 {
+		t.Errorf("expected duration 90m when DTEND precedes DTSTART, got %d", icsEvents[0].DurationMinutes)
+	}
+
+	// 5. normalizeOpenAIBaseURL & offline JSON validity with quotes
+	normURL, err := normalizeOpenAIBaseURL("https://api.deepseek.com/v1/chat/completions/")
+	if err != nil || normURL != "https://api.deepseek.com/v1/chat/completions" {
+		t.Errorf("unexpected normalized URL: %q err=%v", normURL, err)
+	}
+	if _, err := normalizeOpenAIBaseURL("ftp://invalid.local"); err == nil {
+		t.Errorf("expected error for non-http(s) base URL")
+	}
+	offlineReply, err := svc.generateOfflineChatResponse([]AIChatMessage{
+		{Role: "user", Content: `早中晚各一次核对 "API" 与 \quota\ 状态`},
+	}, nil, time.Now())
+	if err != nil {
+		t.Fatalf("offline chat failed: %v", err)
+	}
+	if !strings.Contains(offlineReply, `\"API\"`) {
+		t.Errorf("expected properly JSON-escaped quotes in offline reply, got:\n%s", offlineReply)
+	}
+}
+
+func TestRestoreDatabaseRejectsInvalidAndCleansWAL(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/agenda.db"
+	d, err := InitDBWithPath(dbPath)
+	if err != nil {
+		t.Fatalf("InitDBWithPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Create a valid backup first
+	backupPath, err := d.BackupDatabase(dir + "/backups")
+	if err != nil {
+		t.Fatalf("BackupDatabase failed: %v", err)
+	}
+
+	// Reject corrupt/non-SQLite file without closing active DB
+	badFile := dir + "/bad.db"
+	if err := os.WriteFile(badFile, []byte("not a sqlite database"), 0644); err != nil {
+		t.Fatalf("write badFile failed: %v", err)
+	}
+	if err := d.RestoreDatabase(badFile); err == nil {
+		t.Errorf("expected RestoreDatabase to reject non-sqlite file")
+	}
+
+	// Create a reminder after backup, then restore backup and verify clean state
+	if _, err := d.CreateReminder(CreateReminderRequest{
+		Title:       "备份后新增",
+		ScheduledAt: time.Now().Add(time.Hour).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("CreateReminder failed: %v", err)
+	}
+	if err := d.RestoreDatabase(backupPath); err != nil {
+		t.Fatalf("RestoreDatabase failed: %v", err)
+	}
+	list, err := d.GetAllReminders()
+	if err != nil {
+		t.Fatalf("GetAllReminders after restore failed: %v", err)
+	}
+	for _, r := range list {
+		if r.Title == "备份后新增" {
+			t.Errorf("expected restored DB not to contain post-backup reminder")
+		}
 	}
 }

@@ -108,12 +108,53 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
   } else if (!/(?:本周末|这周末|下周末)/i.test(input) && (/周末/i.test(input) || /每周六[、和与]?日/i.test(input))) {
     repeatRule = 'FREQ=WEEKLY;BYDAY=SA,SU';
     input = input.replace(/(?:每|每个)?周末|每周六[、和与]?日/i, ' ');
-  } else if (/每天|每日|天天/i.test(input)) {
+  } else if (/每天|每日|天天|\b(?:every\s*day|daily)\b/i.test(input)) {
     repeatRule = 'FREQ=DAILY';
-    input = input.replace(/每天|每日|天天/i, ' ');
+    input = input.replace(/每天|每日|天天|\b(?:every\s*day|daily)\b/i, ' ');
   } else if (/每隔一天/i.test(input)) {
     repeatRule = 'FREQ=DAILY;INTERVAL=2';
     input = input.replace(/每隔一天/i, ' ');
+  } else if (/每(?:隔)?\s*(\d+)\s*天/i.test(input)) {
+    const m = input.match(/每(?:隔)?\s*(\d+)\s*天/i);
+    if (m) {
+      const iv = Math.max(1, parseInt(m[1], 10));
+      repeatRule = iv > 1 ? `FREQ=DAILY;INTERVAL=${iv}` : 'FREQ=DAILY';
+      input = input.replace(m[0], ' ');
+    }
+  } else if (/每(?:隔)?\s*(\d+)\s*周/i.test(input)) {
+    const m = input.match(/每(?:隔)?\s*(\d+)\s*周/i);
+    if (m) {
+      const iv = Math.max(1, parseInt(m[1], 10));
+      repeatRule = iv > 1 ? `FREQ=WEEKLY;INTERVAL=${iv}` : 'FREQ=WEEKLY';
+      input = input.replace(m[0], ' ');
+    }
+  } else if (/\b(?:every\s*week|weekly)\b/i.test(input)) {
+    repeatRule = 'FREQ=WEEKLY';
+    input = input.replace(/\b(?:every\s*week|weekly)\b/i, ' ');
+  } else if (/\b(?:every\s*month|monthly)\b/i.test(input)) {
+    repeatRule = 'FREQ=MONTHLY';
+    input = input.replace(/\b(?:every\s*month|monthly)\b/i, ' ');
+  } else if (/每(?:个)?月(?:最后一天|月底|月末)/i.test(input)) {
+    repeatRule = 'FREQ=MONTHLY;BYMONTHDAY=-1';
+    input = input.replace(/每(?:个)?月(?:最后一天|月底|月末)/i, ' ');
+  } else if (/每(?:个)?月最后(?:一)?个(?:周|星期|礼拜)([一二三四五六日天1234567])/i.test(input)) {
+    const m = input.match(/每(?:个)?月最后(?:一)?个(?:周|星期|礼拜)([一二三四五六日天1234567])/i);
+    if (m) {
+      const code = weekdayToCode(m[1]);
+      repeatRule = `FREQ=MONTHLY;BYDAY=-1${code}`;
+      input = input.replace(m[0], ' ');
+    }
+  } else if (/(?:每两周|每隔一周|隔周|双周)(?:的?(?:周|星期|礼拜)([一二三四五六日天1234567]))?/i.test(input)) {
+    const m = input.match(/(?:每两周|每隔一周|隔周|双周)(?:的?(?:周|星期|礼拜)([一二三四五六日天1234567]))?/i);
+    if (m) {
+      if (m[1]) {
+        const code = weekdayToCode(m[1]);
+        repeatRule = `FREQ=WEEKLY;INTERVAL=2;BYDAY=${code}`;
+      } else {
+        repeatRule = 'FREQ=WEEKLY;INTERVAL=2';
+      }
+      input = input.replace(m[0], ' ');
+    }
   } else if (/每周([一二三四五六日天1234567])/i.test(input)) {
     const m = input.match(/每周([一二三四五六日天1234567])/i);
     if (m) {
@@ -127,6 +168,12 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
       repeatRule = `FREQ=MONTHLY;BYMONTHDAY=${m[1]}`;
       input = input.replace(m[0], ' ');
     }
+  } else if (/(?:每季度|每个季度)/i.test(input)) {
+    repeatRule = 'FREQ=MONTHLY;INTERVAL=3';
+    input = input.replace(/(?:每季度|每个季度)/i, ' ');
+  } else if (/(?:每月|每个月)/i.test(input)) {
+    repeatRule = 'FREQ=MONTHLY';
+    input = input.replace(/(?:每月|每个月)/i, ' ');
   } else if (/每年/i.test(input)) {
     repeatRule = 'FREQ=YEARLY';
     input = input.replace(/每年/i, ' ');
@@ -172,21 +219,26 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
   let hasTime = false;
   let hasExplicitDate = false;
 
-  // 4.3 Explicit Calendar Dates (e.g. 2026-11-20 / 11月25号 / 下个月15日)
-  const fullDateMatch = input.match(/(?:(\d{4})[年\-\/\.])?\s*(\d{1,2})[月\-\/\.]\s*(\d{1,2})[号日]?/);
+  // 4.3 Explicit Calendar Dates (e.g. 2026-11-20 / 2026.11.20 / 11月25号 / 11/25; ignore version numbers/decimals like v1.2.3 or 3.14)
+  const fullDateMatch = input.match(/(?<![\d.])(?:(\d{4})[年\-\/\.]\s*(\d{1,2})[月\-\/\.]\s*(\d{1,2})[号日]?|(\d{1,2})[月\-\/]\s*(\d{1,2})[号日]?)(?![\d.])/);
   if (fullDateMatch && !/每/.test(input.slice(Math.max(0, (fullDateMatch.index || 0) - 2), fullDateMatch.index || 0))) {
-    let y = fullDateMatch[1] ? parseInt(fullDateMatch[1], 10) : now.getFullYear();
-    const m = parseInt(fullDateMatch[2], 10) - 1; // 0-indexed
-    const d = parseInt(fullDateMatch[3], 10);
-    // If no year specified and date is already past by more than 1 month, assume next year
-    if (!fullDateMatch[1] && (m < now.getMonth() || (m === now.getMonth() && d < now.getDate()))) {
-      y += 1;
+    const rawYear = fullDateMatch[1];
+    const rawMonth = rawYear ? fullDateMatch[2] : fullDateMatch[4];
+    const rawDay = rawYear ? fullDateMatch[3] : fullDateMatch[5];
+    let y = rawYear ? parseInt(rawYear, 10) : now.getFullYear();
+    const m = parseInt(rawMonth, 10) - 1; // 0-indexed
+    const d = parseInt(rawDay, 10);
+    if (m >= 0 && m <= 11 && d >= 1 && d <= 31) {
+      // If no year specified and date is already past, assume next year
+      if (!rawYear && (m < now.getMonth() || (m === now.getMonth() && d < now.getDate()))) {
+        y += 1;
+      }
+      targetYear = y;
+      targetMonth = m;
+      targetDate = d;
+      hasExplicitDate = true;
+      input = input.replace(fullDateMatch[0], ' ');
     }
-    targetYear = y;
-    targetMonth = m;
-    targetDate = d;
-    hasExplicitDate = true;
-    input = input.replace(fullDateMatch[0], ' ');
   } else {
     const nextNextMonthMatch = input.match(/(?:下下个?月|下下月)\s*(\d{1,2})[号日]/);
     const nextMonthMatch = input.match(/(?:下个?月|下月)\s*(\d{1,2})[号日]/);
@@ -252,7 +304,7 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
     targetDate = d.getDate();
     hasExplicitDate = true;
     input = input.replace(/后天/i, ' ');
-  } else if (/明天|明晚/i.test(input)) {
+  } else if (/明天|明早|明晨|明晚|\btomorrow\b/i.test(input)) {
     const d = new Date(now);
     d.setDate(d.getDate() + 1);
     targetYear = d.getFullYear();
@@ -263,16 +315,37 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
       targetHour = 20;
       targetMinute = 0;
       hasTime = true;
+      input = input.replace(/明晚/i, ' ');
+    } else if (/明早|明晨/i.test(input)) {
+      targetHour = 9;
+      targetMinute = 0;
+      // Replace with 早上 so a following clock like "明早8点半" still parses as 08:30
+      input = input.replace(/明早|明晨/i, '早上');
+    } else {
+      input = input.replace(/明天|\btomorrow\b/i, ' ');
     }
-    input = input.replace(/明天|明晚/i, ' ');
-  } else if (/今天|今日|今晚/i.test(input)) {
+  } else if (/\bnext\s*week\b/i.test(input)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 7);
+    targetYear = d.getFullYear();
+    targetMonth = d.getMonth();
+    targetDate = d.getDate();
+    hasExplicitDate = true;
+    input = input.replace(/\bnext\s*week\b/i, ' ');
+  } else if (/今天|今日|今早|今晨|今晚/i.test(input)) {
     hasExplicitDate = true;
     if (/今晚/i.test(input)) {
       targetHour = 20;
       targetMinute = 0;
       hasTime = true;
+      input = input.replace(/今晚/i, ' ');
+    } else if (/今早|今晨/i.test(input)) {
+      targetHour = 9;
+      targetMinute = 0;
+      input = input.replace(/今早|今晨/i, '早上');
+    } else {
+      input = input.replace(/今天|今日/i, ' ');
     }
-    input = input.replace(/今天|今日|今晚/i, ' ');
   }
 
   // Relative Days offset (e.g. 3天后 / 5天后 / 两天后)
@@ -344,12 +417,33 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
     input = input.replace(/下周末/i, ' ');
   }
 
-  // Month Period: 月初 / 月中 / 月底
-  if (/本?月底/i.test(input)) {
+  // Month Period: 下月初 / 下月中 / 下月底 / 月初 / 月中 / 月底 / 月末
+  if (/下个?月(?:底|末)/i.test(input)) {
+    const nextLast = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    targetYear = nextLast.getFullYear();
+    targetMonth = nextLast.getMonth();
+    targetDate = nextLast.getDate();
+    hasExplicitDate = true;
+    input = input.replace(/下个?月(?:底|末)/i, ' ');
+  } else if (/下个?月中/i.test(input)) {
+    const nextMid = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    targetYear = nextMid.getFullYear();
+    targetMonth = nextMid.getMonth();
+    targetDate = nextMid.getDate();
+    hasExplicitDate = true;
+    input = input.replace(/下个?月中/i, ' ');
+  } else if (/下个?月初/i.test(input)) {
+    const nextFirst = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    targetYear = nextFirst.getFullYear();
+    targetMonth = nextFirst.getMonth();
+    targetDate = nextFirst.getDate();
+    hasExplicitDate = true;
+    input = input.replace(/下个?月初/i, ' ');
+  } else if (/本?月(?:底|末)/i.test(input)) {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     targetDate = lastDay;
     hasExplicitDate = true;
-    input = input.replace(/本?月底/i, ' ');
+    input = input.replace(/本?月(?:底|末)/i, ' ');
   } else if (/本?月中/i.test(input)) {
     targetDate = 15;
     hasExplicitDate = true;
@@ -499,40 +593,44 @@ export function parseNaturalReminder(text: string, now: Date = new Date()): Pars
       const p = colonMatch[1] || '';
       let h = parseInt(colonMatch[2], 10);
       const m = parseInt(colonMatch[3], 10);
-      if (/下午|晚上|傍晚|夜里/.test(p) && h < 12) {
-        h += 12;
-      } else if (/半夜|午夜|凌晨/.test(p) && h === 12) {
-        h = 0;
-      }
-      targetHour = h;
-      targetMinute = m;
-      hasTime = true;
-      input = input.replace(colonMatch[0], ' ');
-    } else {
-      // Check X点半 / X点一刻 / X点Y分 / 下午3点
-      const clockMatch = input.match(/(?:(早上|早晨|清晨|上午|中午|下午|傍晚|晚上|夜里|半夜|凌晨)\s*)?(\d{1,2})点(?:半|(?:过|零)?(\d{1,2})分?|一刻|三刻)?/);
-      if (clockMatch) {
-        const p = clockMatch[1] || '';
-        let h = parseInt(clockMatch[2], 10);
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
         if (/下午|晚上|傍晚|夜里/.test(p) && h < 12) {
           h += 12;
         } else if (/半夜|午夜|凌晨/.test(p) && h === 12) {
           h = 0;
         }
         targetHour = h;
-        if (clockMatch[0].includes('半')) {
-          targetMinute = 30;
-        } else if (clockMatch[0].includes('一刻')) {
-          targetMinute = 15;
-        } else if (clockMatch[0].includes('三刻')) {
-          targetMinute = 45;
-        } else if (clockMatch[3]) {
-          targetMinute = parseInt(clockMatch[3], 10);
-        } else {
-          targetMinute = 0;
-        }
+        targetMinute = m;
         hasTime = true;
-        input = input.replace(clockMatch[0], ' ');
+        input = input.replace(colonMatch[0], ' ');
+      }
+    } else {
+      // Check X点半 / X点一刻 / X点Y分 / 下午3点
+      const clockMatch = input.match(/(?:(早上|早晨|清晨|上午|中午|下午|傍晚|晚上|夜里|半夜|凌晨)\s*)?(\d{1,2})点(?:半|(?:过|零)?(\d{1,2})分?|一刻|三刻)?/);
+      if (clockMatch) {
+        const p = clockMatch[1] || '';
+        let h = parseInt(clockMatch[2], 10);
+        let parsedMin = 0;
+        if (clockMatch[0].includes('半')) {
+          parsedMin = 30;
+        } else if (clockMatch[0].includes('一刻')) {
+          parsedMin = 15;
+        } else if (clockMatch[0].includes('三刻')) {
+          parsedMin = 45;
+        } else if (clockMatch[3]) {
+          parsedMin = parseInt(clockMatch[3], 10);
+        }
+        if (h >= 0 && h <= 23 && parsedMin >= 0 && parsedMin <= 59) {
+          if (/下午|晚上|傍晚|夜里/.test(p) && h < 12) {
+            h += 12;
+          } else if (/半夜|午夜|凌晨/.test(p) && h === 12) {
+            h = 0;
+          }
+          targetHour = h;
+          targetMinute = parsedMin;
+          hasTime = true;
+          input = input.replace(clockMatch[0], ' ');
+        }
       }
     }
 

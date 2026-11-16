@@ -154,7 +154,7 @@ onUnmounted(() => {
   box-shadow:
     var(--glass-lens-shadow, 0 4px 14px rgba(0, 0, 0, 0.38)),
     0 0 18px color-mix(in srgb, var(--tide, #46b7ff) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    inset 0 1px 0 var(--highlight-edge);
   backdrop-filter: blur(12px) saturate(160%);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
   transition:
@@ -170,7 +170,7 @@ onUnmounted(() => {
   box-shadow:
     var(--glass-lens-shadow-stretch, 0 4px 18px rgba(0, 0, 0, 0.45)),
     0 0 22px color-mix(in srgb, var(--tide, #46b7ff) 32%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+    inset 0 1px 0 var(--highlight-edge);
 }
 
 /* Chromatic rim glint modeled after Scrolltide Glass Tabs */
@@ -180,9 +180,9 @@ onUnmounted(() => {
   border-radius: inherit;
   background: linear-gradient(
     90deg,
-    rgba(70, 183, 255, 0.14) 0%,
-    rgba(255, 255, 255, 0.08) 45%,
-    rgba(217, 255, 84, 0.12) 100%
+    color-mix(in srgb, var(--tide) 16%, transparent) 0%,
+    var(--highlight-edge) 45%,
+    color-mix(in srgb, var(--theme-secondary, var(--lime)) 14%, transparent) 100%
   );
   opacity: 0.7;
 }

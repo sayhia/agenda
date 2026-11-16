@@ -4,6 +4,11 @@ const ALLOWED_TAGS = new Set([
   'THEAD', 'TR', 'UL', 'MARK',
 ]);
 
+const DROP_CONTENT_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT',
+  'SVG', 'MATH', 'TEMPLATE', 'TEXTAREA', 'TITLE',
+]);
+
 const ALLOWED_ATTRIBUTES: Record<string, Set<string>> = {
   A: new Set(['href', 'title']),
   CODE: new Set(['class']),
@@ -25,8 +30,8 @@ export function escapeHTML(value: string): string {
 
 /**
  * Sanitizes small trusted-format HTML fragments produced by the Markdown renderer.
- * Unknown elements are unwrapped, event handlers are removed, and links are limited
- * to http(s), mailto and same-page anchors.
+ * Dangerous containers are removed, unknown elements are unwrapped, event handlers
+ * are stripped, and links are limited to http(s), mailto and same-page anchors.
  */
 export function sanitizeHTML(html: string): string {
   if (typeof DOMParser === 'undefined') return escapeHTML(html);
@@ -35,6 +40,10 @@ export function sanitizeHTML(html: string): string {
   const elements = Array.from(documentNode.body.querySelectorAll('*')).reverse();
 
   for (const element of elements) {
+    if (DROP_CONTENT_TAGS.has(element.tagName)) {
+      element.remove();
+      continue;
+    }
     if (!ALLOWED_TAGS.has(element.tagName)) {
       element.replaceWith(...Array.from(element.childNodes));
       continue;

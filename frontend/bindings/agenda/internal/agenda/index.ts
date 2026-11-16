@@ -10,10 +10,19 @@ export type {
     AIChatMessage,
     AIChatRecord,
     AIConfig,
+    AutoStartInfo,
     CreateReminderRequest,
     DeliveryRecord,
+    DesktopManager,
+    DesktopPreferences,
+    DesktopRuntimeStatus,
+    FocusTrayState,
     PolishResult,
+    RecentDeliveryItem,
     Reminder,
+    Scheduler,
+    SchedulerStatus,
     Stats,
-    UpdateReminderRequest
+    UpdateReminderRequest,
+    WindowSummary
 } from "./models.js";

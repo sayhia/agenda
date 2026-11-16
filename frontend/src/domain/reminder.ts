@@ -1,6 +1,6 @@
 import type { Reminder, UpdateReminderRequest } from '../../bindings/agenda/internal/agenda/models';
 
-export type ReminderStatus = 'active' | 'paused' | 'ended';
+export type ReminderStatus = 'active' | 'paused' | 'ended' | 'expired';
 export type ReminderPriority = 'p0' | 'p1' | 'p2' | 'p3';
 
 export interface Subtask {

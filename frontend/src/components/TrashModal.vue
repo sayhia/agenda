@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   GetTrashReminders,
   RestoreReminder,
@@ -25,6 +25,18 @@ const actionId = ref<string | null>(null);
 const confirmDeleteId = ref<string | null>(null);
 const confirmEmpty = ref(false);
 const isEmptying = ref(false);
+const trashSearch = ref('');
+
+const filteredTrashList = computed(() => {
+  const q = trashSearch.value.trim().toLowerCase();
+  if (!q) return trashList.value;
+  return trashList.value.filter(
+    (r) =>
+      r.title.toLowerCase().includes(q) ||
+      (r.notes || '').toLowerCase().includes(q) ||
+      (r.tags || '').toLowerCase().includes(q),
+  );
+});
 
 async function loadTrash() {
   isLoading.value = true;
@@ -65,6 +77,7 @@ async function handlePermanentDelete(id: string) {
     await PermanentDelete(id);
     emit('toast', '日程已永久删除', 'info');
     await loadTrash();
+    emit('restored');
   } catch (err: any) {
     emit('toast', `删除失败: ${err.message || err}`, 'error');
   } finally {
@@ -84,6 +97,7 @@ async function handleEmptyTrash() {
     await EmptyTrash();
     emit('toast', '已永久清空废纸篓', 'success');
     await loadTrash();
+    emit('restored');
   } catch (err: any) {
     emit('toast', `清空失败: ${err.message || err}`, 'error');
   } finally {
@@ -97,6 +111,7 @@ watch(
     if (v) {
       confirmDeleteId.value = null;
       confirmEmpty.value = false;
+      trashSearch.value = '';
       void loadTrash();
     }
   }
@@ -104,14 +119,15 @@ watch(
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="trash-card st-reticle" role="dialog" aria-modal="true" aria-label="废纸篓">
+  <Transition name="modal-fade">
+    <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+      <div class="trash-card st-reticle" role="dialog" aria-modal="true" aria-label="废纸篓">
       <div class="card-head">
         <div class="head-left">
           <div class="vault-signal" aria-hidden="true"><span></span></div>
           <div>
-            <span class="head-eyebrow">QUARANTINE VAULT</span>
-            <h3 class="head-title">废纸篓 · 已删除日程 <span class="count-pill tabular-nums">{{ trashList.length }} 项</span></h3>
+            <span class="head-eyebrow">QUARANTINE VAULT · 尘匣暂存</span>
+            <h3 class="head-title">废纸篓 · 已删除日程 <span class="shanshui-seal" title="尘匣印章">藏</span> <span class="count-pill tabular-nums">{{ trashList.length }} 项</span></h3>
           </div>
         </div>
         <div class="head-right">
@@ -125,17 +141,50 @@ watch(
           >
             {{ isEmptying ? '清空中…' : confirmEmpty ? '确认永久清空' : '清空废纸篓' }}
           </button>
-          <button class="icon-btn" title="关闭" @click="$emit('close')">✕</button>
+          <button class="modal-close-btn" title="关闭" aria-label="关闭" @click="$emit('close')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
+      </div>
+
+      <div v-if="trashList.length > 0" class="trash-search-row">
+        <svg class="trash-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-4-4" />
+        </svg>
+        <input
+          v-model="trashSearch"
+          type="text"
+          class="trash-search-input"
+          placeholder="搜索已删除日程标题、备注或标签…"
+        />
+        <button v-if="trashSearch" type="button" class="trash-search-clear" title="清空搜索" aria-label="清空搜索" @click="trashSearch = ''">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <div class="trash-body">
         <div v-if="trashList.length === 0" class="empty-state">
-          <span class="empty-icon">—</span>
-          <p>废纸篓空空如也，无已删除日程</p>
+          <span class="shanshui-seal baiwen" aria-hidden="true">净</span>
+          <p>纸静砚空，凡所过往皆无残留</p>
+        </div>
+        <div v-else-if="filteredTrashList.length === 0" class="empty-state">
+          <span class="empty-icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-4-4" />
+            </svg>
+          </span>
+          <p>未找到匹配的已删除日程</p>
         </div>
 
-        <div v-for="r in trashList" :key="r.id" class="trash-item">
+        <div v-for="r in filteredTrashList" :key="r.id" class="trash-item">
           <div class="item-left">
             <div class="title-row">
               <span class="task-title">{{ r.title }}</span>
@@ -150,42 +199,52 @@ watch(
           </div>
 
           <div class="item-actions">
-            <button class="action-btn restore-btn" :disabled="Boolean(actionId)" title="还原回待办列表" @click="handleRestore(r.id)">
-              {{ actionId === r.id ? '处理中…' : '还原' }}
+            <button class="action-btn restore-btn st-inline-icon" :disabled="Boolean(actionId)" title="还原回待办列表" @click="handleRestore(r.id)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              <span>{{ actionId === r.id ? '处理中…' : '还原' }}</span>
             </button>
-            <button class="action-btn perm-delete-btn" :class="{ confirming: confirmDeleteId === r.id }" :disabled="Boolean(actionId)" :title="confirmDeleteId === r.id ? '再次点击确认永久删除' : '永久删除'" @click="handlePermanentDelete(r.id)">
-              {{ confirmDeleteId === r.id ? '确认删除' : '永久删除' }}
+            <button class="action-btn perm-delete-btn st-inline-icon" :class="{ confirming: confirmDeleteId === r.id }" :disabled="Boolean(actionId)" :title="confirmDeleteId === r.id ? '再次点击确认永久删除' : '永久删除'" @click="handlePermanentDelete(r.id)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+              <span>{{ confirmDeleteId === r.id ? '确认删除' : '永久删除' }}</span>
             </button>
           </div>
         </div>
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(3, 5, 8, 0.72);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 150;
+  z-index: var(--z-overlay);
 }
 
 .trash-card {
   position: relative;
-  width: 580px;
+  width: 590px;
   max-width: 92vw;
-  max-height: 82vh;
+  max-height: min(84vh, 660px);
   border-radius: 18px;
-  padding: 22px 26px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  overflow: hidden;
   background:
     radial-gradient(65% 45% at 100% 0%, color-mix(in srgb, var(--danger) 8%, transparent), transparent 65%),
     var(--surface-raised);
@@ -194,6 +253,7 @@ watch(
 }
 
 .card-head {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -275,10 +335,11 @@ watch(
 }
 
 .trash-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 420px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -416,5 +477,54 @@ watch(
   font: 400 22px var(--font-mono);
   display: block;
   margin-bottom: 6px;
+}
+
+.trash-search-row {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.trash-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-quaternary);
+  pointer-events: none;
+}
+
+.trash-search-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 30px 0 30px;
+  border-radius: 9px;
+  border: 1px solid var(--border-subtle);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.trash-search-input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.trash-search-clear {
+  position: absolute;
+  right: 7px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: var(--fill-hover);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.trash-search-clear:hover {
+  color: var(--text-primary);
 }
 </style>

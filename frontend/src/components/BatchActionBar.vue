@@ -64,9 +64,9 @@ onUnmounted(() => {
       <div class="batch-dock" :class="{ busy }" role="toolbar" aria-label="批量操作" :aria-busy="busy">
         <div class="batch-summary"><strong>{{ count }}</strong><span>{{ busy ? '处理中…' : '项已选' }}</span></div>
         <span class="batch-separator"></span>
-        <button class="batch-primary" type="button" @click="$emit('batch-complete')">完成</button>
-        <button type="button" title="顺延1小时" @click="$emit('batch-postpone-hour')">推迟 1h</button>
-        <button type="button" @click="$emit('batch-postpone-day')">顺延一天</button>
+        <button class="batch-primary" type="button" title="批量标记为已完成" @click="$emit('batch-complete')">完成</button>
+        <button type="button" title="批量顺延 1 小时" @click="$emit('batch-postpone-hour')">推迟 1h</button>
+        <button type="button" title="批量顺延 1 天" @click="$emit('batch-postpone-day')">顺延一天</button>
 
         <div class="batch-popover-wrap">
           <button type="button" :aria-expanded="openMenu === 'priority'" @click="openMenu = openMenu === 'priority' ? null : 'priority'">优先级 <span>⌄</span></button>
@@ -79,6 +79,7 @@ onUnmounted(() => {
           <button type="button" :aria-expanded="openMenu === 'more'" @click="openMenu = openMenu === 'more' ? null : 'more'">更多 <span>⌄</span></button>
           <div v-if="openMenu === 'more'" class="batch-menu more-menu">
             <button type="button" @click="trigger('batch-pin', true)">置顶</button>
+            <button type="button" @click="trigger('batch-pin', false)">取消置顶</button>
             <button type="button" @click="openMenu = 'tag'">添加标签</button>
             <button type="button" @click="trigger('batch-export')">导出 Markdown</button>
             <div class="menu-separator"></div>
@@ -102,7 +103,7 @@ onUnmounted(() => {
 
 <style scoped>
 .batch-bar-wrap { position:fixed; left:calc(50% + 110px); bottom:20px; z-index:var(--z-float); transform:translateX(-50%); max-width:calc(100vw - 24px); }
-.batch-dock { display:flex; align-items:center; gap:5px; padding:6px 8px 6px 14px; border:1px solid var(--border-strong); border-radius:999px; background:var(--surface-overlay); box-shadow:var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.08); backdrop-filter:blur(22px) saturate(145%); -webkit-backdrop-filter:blur(22px) saturate(145%); }
+.batch-dock { display:flex; align-items:center; gap:5px; padding:6px 8px 6px 14px; border:1px solid var(--border-strong); border-radius:999px; background:var(--surface-overlay); box-shadow:var(--shadow-lg), inset 0 1px 0 var(--highlight-edge); backdrop-filter:blur(22px) saturate(145%); -webkit-backdrop-filter:blur(22px) saturate(145%); }
 .batch-dock.busy { pointer-events:none; opacity:.72; }
 .batch-summary { display:flex; align-items:center; gap:5px; margin-right:3px; white-space:nowrap; }
 .batch-summary strong { color:var(--tide-text); font:750 11.5px var(--font-mono); }.batch-summary span { color:var(--text-tertiary); font-size:10px; }
@@ -112,7 +113,7 @@ onUnmounted(() => {
 .batch-dock .batch-primary { border-color:transparent; background:var(--cta-bg); color:var(--cta-ink); font-weight:700; }
 .batch-dock .batch-primary:hover { background:var(--cta-bg-hover); color:var(--cta-ink); }
 .batch-popover-wrap { position:relative; }
-.batch-menu { position:absolute; right:0; bottom:39px; min-width:166px; display:grid; gap:2px; padding:6px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface-overlay); box-shadow:var(--shadow-lg); backdrop-filter:blur(20px); }
+.batch-menu { position:absolute; right:0; bottom:39px; min-width:166px; max-height:calc(100vh - 110px); overflow-y:auto; display:grid; gap:2px; padding:6px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface-overlay); box-shadow:var(--shadow-lg); backdrop-filter:blur(20px); }
 .batch-menu button { width:100%; border-radius:8px; text-align:left; }.batch-menu button:hover { background:var(--fill-hover); color:var(--text-primary); }
 .priority-menu { left:0; right:auto; min-width:170px; }.priority-menu button { display:flex; align-items:center; gap:8px; }
 .priority-dot { width:6px; height:6px; border-radius:50%; background:var(--text-quaternary); }.priority-dot.p0 { background:var(--danger); }.priority-dot.p1 { background:var(--lime-strong); }.priority-dot.p2 { background:var(--tide); }

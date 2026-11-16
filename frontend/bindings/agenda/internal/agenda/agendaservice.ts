@@ -85,6 +85,10 @@ export function ClearDeliveryHistory(): $CancellablePromise<void> {
     return $Call.ByID(914744686);
 }
 
+export function CloseDesktopWindow(name: string): $CancellablePromise<void> {
+    return $Call.ByID(922543533, name);
+}
+
 export function DeleteReminder(id: string): $CancellablePromise<void> {
     return $Call.ByID(722065704, id);
 }
@@ -113,6 +117,10 @@ export function FindOptimalFreeSlot(dateStr: string, durationMinutes: number): $
     return $Call.ByID(2651934602, dateStr, durationMinutes);
 }
 
+export function FocusDesktopWindow(name: string): $CancellablePromise<void> {
+    return $Call.ByID(1685364477, name);
+}
+
 export function GenerateDailyBriefing(): $CancellablePromise<string> {
     return $Call.ByID(2606411603);
 }
@@ -137,8 +145,20 @@ export function GetDeliveryHistory(reminderID: string): $CancellablePromise<$mod
     return $Call.ByID(334980213, reminderID);
 }
 
+export function GetDesktopPreferences(): $CancellablePromise<$models.DesktopPreferences> {
+    return $Call.ByID(1965960625);
+}
+
+export function GetDesktopRuntimeStatus(): $CancellablePromise<$models.DesktopRuntimeStatus> {
+    return $Call.ByID(1795183649);
+}
+
 export function GetOverdueReminders(): $CancellablePromise<$models.Reminder[] | null> {
     return $Call.ByID(1299331760);
+}
+
+export function GetRecentDeliveries(limit: number): $CancellablePromise<$models.RecentDeliveryItem[] | null> {
+    return $Call.ByID(972063196, limit);
 }
 
 export function GetReminder(id: string): $CancellablePromise<$models.Reminder | null> {
@@ -165,6 +185,10 @@ export function GetTrashReminders(): $CancellablePromise<$models.Reminder[] | nu
     return $Call.ByID(2831272610);
 }
 
+export function HideAllAuxiliaryWindows(): $CancellablePromise<void> {
+    return $Call.ByID(200131889);
+}
+
 export function ImportCSVContent(content: string): $CancellablePromise<number> {
     return $Call.ByID(2646714965, content);
 }
@@ -177,6 +201,10 @@ export function ImportJSONBackup(jsonContent: string): $CancellablePromise<numbe
     return $Call.ByID(3184751644, jsonContent);
 }
 
+export function OpenDesktopWindow(kind: string, param: string): $CancellablePromise<void> {
+    return $Call.ByID(2243217699, kind, param);
+}
+
 export function OptimizeDatabase(): $CancellablePromise<string> {
     return $Call.ByID(3147384471);
 }
@@ -185,12 +213,32 @@ export function ParseMultipleRemindersWithAI(input: string): $CancellablePromise
     return $Call.ByID(76933469, input);
 }
 
+export function PauseSchedulerFor(minutes: number): $CancellablePromise<void> {
+    return $Call.ByID(3085579581, minutes);
+}
+
 export function PermanentDelete(id: string): $CancellablePromise<void> {
     return $Call.ByID(1870418430, id);
 }
 
 export function PolishReminderWithAI(rawText: string): $CancellablePromise<$models.PolishResult | null> {
     return $Call.ByID(3420956696, rawText);
+}
+
+export function RefreshTrayMenu(): $CancellablePromise<void> {
+    return $Call.ByID(4150401983);
+}
+
+export function ResetAllDesktopWindowBounds(): $CancellablePromise<void> {
+    return $Call.ByID(1930633240);
+}
+
+export function ResetDesktopWindowBounds(name: string): $CancellablePromise<void> {
+    return $Call.ByID(121342721, name);
+}
+
+export function ResizeDesktopWindow(name: string, width: number, height: number): $CancellablePromise<void> {
+    return $Call.ByID(3534699507, name, width, height);
 }
 
 export function RestoreDatabase(backupPath: string): $CancellablePromise<void> {
@@ -213,20 +261,94 @@ export function SaveAIConfig(cfg: $models.AIConfig): $CancellablePromise<void> {
     return $Call.ByID(1552140716, cfg);
 }
 
+export function SaveDesktopPreferences(prefs: $models.DesktopPreferences): $CancellablePromise<$models.DesktopPreferences> {
+    return $Call.ByID(3022150358, prefs);
+}
+
 export function SaveSettings(settings: { [_ in string]?: string } | null): $CancellablePromise<void> {
     return $Call.ByID(3062113321, settings);
+}
+
+/**
+ * SendDesktopNotification dispatches a native OS notification unless Do-Not-Disturb is active.
+ */
+export function SendDesktopNotification(title: string, body: string): $CancellablePromise<void> {
+    return $Call.ByID(3353614842, title, body);
+}
+
+export function SendMorningBriefingNow(): $CancellablePromise<string> {
+    return $Call.ByID(1898366163);
+}
+
+export function SetAutoStartEnabled(enabled: boolean): $CancellablePromise<$models.AutoStartInfo> {
+    return $Call.ByID(1665171433, enabled);
+}
+
+export function SetDesktopManager(dm: $models.DesktopManager | null): $CancellablePromise<void> {
+    return $Call.ByID(987932724, dm);
+}
+
+export function SetDesktopWindowAlwaysOnTop(name: string, onTop: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2838262724, name, onTop);
+}
+
+export function SetScheduler(sched: $models.Scheduler | null): $CancellablePromise<void> {
+    return $Call.ByID(2139498764, sched);
+}
+
+export function SetSchedulerPaused(paused: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1363340838, paused);
+}
+
+export function SetTrayPopoverPinned(pinned: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2207032182, pinned);
+}
+
+export function SnoozeAllOverdue(minutes: number): $CancellablePromise<number> {
+    return $Call.ByID(1578777918, minutes);
+}
+
+/**
+ * SnoozeReminder pushes an active or expired reminder forward by N minutes (from max(now, scheduled_at))
+ * and ensures its status is set to active.
+ */
+export function SnoozeReminder(id: string, minutes: number): $CancellablePromise<$models.Reminder | null> {
+    return $Call.ByID(4078264633, id, minutes);
+}
+
+/**
+ * SuggestNextFreeSlot returns the next conflict-free RFC3339 timestamp for a pending schedule draft.
+ */
+export function SuggestNextFreeSlot(scheduledAt: string, durationMinutes: number): $CancellablePromise<string> {
+    return $Call.ByID(1803226134, scheduledAt, durationMinutes);
 }
 
 export function TestAIConnection(baseURL: string, apiKey: string, model: string): $CancellablePromise<string> {
     return $Call.ByID(3577035699, baseURL, apiKey, model);
 }
 
+export function ToggleDesktopWindow(kind: string): $CancellablePromise<void> {
+    return $Call.ByID(402897927, kind);
+}
+
 export function TogglePinReminder(id: string): $CancellablePromise<$models.Reminder | null> {
     return $Call.ByID(904608502, id);
 }
 
+export function TriggerImmediateSchedulerCheck(): $CancellablePromise<void> {
+    return $Call.ByID(2530313375);
+}
+
+export function TriggerOpenInMain(reminderID: string): $CancellablePromise<void> {
+    return $Call.ByID(4102647173, reminderID);
+}
+
 export function TriggerTestNotification(title: string, message: string): $CancellablePromise<string> {
     return $Call.ByID(1976229244, title, message);
+}
+
+export function UpdateFocusTrayStatus(running: boolean, mode: string, clock: string, title: string): $CancellablePromise<void> {
+    return $Call.ByID(1699090482, running, mode, clock, title);
 }
 
 export function UpdateReminder(req: $models.UpdateReminderRequest): $CancellablePromise<$models.Reminder | null> {

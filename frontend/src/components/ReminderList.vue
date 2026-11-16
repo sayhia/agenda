@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import {
   formatTime,
+  formatEndTime,
   formatDateLabel,
   formatRelativeTime,
   formatRepeatLabel,
@@ -11,11 +12,19 @@ import {
   extractLocalPaths,
   getCountdownBadge,
   highlightMatch,
+  formatNotePreview,
 } from '../utils/format';
 import { getTagColor } from '../utils/tagColors';
-import { RevealInFinder, AutoResolveConflict } from '../../bindings/agenda/internal/agenda/agendaservice';
-import { checkTimeConflict } from '../utils/conflict.ts';
+import { RevealInFinder } from '../../bindings/agenda/internal/agenda/agendaservice';
 import { parseReminderSubtasks, parseReminderTags } from '../domain/reminder';
+import { getDailyShanshuiProverb } from '../utils/shanshui';
+import { formatMinutesCompact } from '../utils/focus';
+import {
+  focusDisplayClock,
+  focusEngineState,
+  hasLiveFocusActivity,
+  reminderFocusMap,
+} from '../utils/focusEngine';
 import ScrolltideSelect from './ScrolltideSelect.vue';
 
 export interface SubtaskItem {
@@ -52,6 +61,7 @@ const emit = defineEmits<{
   (e: 'start-focus', reminder: Reminder): void;
   (e: 'update-title', reminder: Reminder, newTitle: string): void;
   (e: 'update-priority', reminder: Reminder, priority: string): void;
+  (e: 'update-notes', reminder: Reminder, notes: string): void;
   (e: 'open-create'): void;
   (e: 'open-ai'): void;
   (e: 'clear-filters'): void;
@@ -90,9 +100,18 @@ function toggleGroupCollapse(groupName: string) {
 }
 
 const listRootRef = ref<HTMLElement | null>(null);
-const activeInspectorReminder = ref<Reminder | null>(null);
-const inspectorSubtaskInput = ref('');
 const lastSelectedId = ref<string | null>(null);
+const portalTargetReady = ref(false);
+const portalTarget = ref('#reminder-inspector-portal');
+
+function ensurePortalTarget(): boolean {
+  const hasPortal = Boolean(document.getElementById('reminder-inspector-portal'));
+  if (!portalTargetReady.value) {
+    portalTarget.value = hasPortal ? '#reminder-inspector-portal' : 'body';
+    portalTargetReady.value = true;
+  }
+  return hasPortal;
+}
 
 watch(() => props.activeId, async (id) => {
   if (!id) return;
@@ -103,100 +122,25 @@ watch(() => props.activeId, async (id) => {
   row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
-watch(() => props.reminders, (newReminders) => {
-  if (activeInspectorReminder.value) {
-    const updated = newReminders.find((r) => r.id === activeInspectorReminder.value?.id);
-    activeInspectorReminder.value = updated || null;
-  }
-});
-
-function toggleInspector(r: Reminder) {
-  if (activeInspectorReminder.value?.id === r.id) {
-    activeInspectorReminder.value = null;
-  } else {
-    activeInspectorReminder.value = r;
-  }
-}
-
-function cycleInspectorPriority(r: Reminder) {
-  const map: Record<string, string> = { p0: 'p1', p1: 'p2', p2: 'p3', p3: 'p0' };
-  const next = map[r.priority || 'p2'] || 'p2';
-  emit('update-priority', r, next);
-}
-
-function handleInspectorTitleChange(r: Reminder, newTitle: string) {
-  const t = newTitle.trim();
-  if (t && t !== r.title) {
-    emit('update-title', r, t);
-  }
-}
-
-function handleInspectorAddSubtask(r: Reminder) {
-  const text = inspectorSubtaskInput.value.trim();
-  if (!text) return;
-  const list = getSubtasks(r);
-  list.push({
-    id: 'st-' + Date.now(),
-    title: text,
-    done: false,
-  });
-  emit('update-subtasks', r.id, JSON.stringify(list));
-  inspectorSubtaskInput.value = '';
-}
-
-function handleInspectorDeleteSubtask(r: Reminder, idx: number) {
-  const list = getSubtasks(r);
-  list.splice(idx, 1);
-  emit('update-subtasks', r.id, JSON.stringify(list));
-}
-
-const inspectorConflict = computed(() => {
-  if (!activeInspectorReminder.value || activeInspectorReminder.value.status !== 'active') {
-    return { hasConflict: false, conflicts: [] };
-  }
-  return checkTimeConflict(
-    activeInspectorReminder.value.scheduled_at,
-    activeInspectorReminder.value.duration_minutes || 30,
-    props.reminders,
-    activeInspectorReminder.value.id
-  );
-});
-
-async function handleAutoDeconflict(r: Reminder) {
-  if (!inspectorConflict.value.suggestedTime) return;
+async function copyReminderTitle(r: Reminder) {
   try {
-    const updated = await AutoResolveConflict(r.id);
-    if (updated) {
-      emit('toast', `已自动顺延至 ${inspectorConflict.value.suggestedTimeLabel} 避开冲突`, 'success');
-    }
+    await navigator.clipboard?.writeText(r.title);
+    emit('toast', '已复制日程标题', 'success');
   } catch {
-    emit('snooze', r, 30);
-    emit('toast', '已为您顺延 30 分钟避开冲突', 'success');
+    emit('toast', '当前环境不支持剪贴板复制', 'error');
   }
 }
 
-function handleMoveSubtask(r: Reminder, idx: number, direction: -1 | 1) {
-  const list = getSubtasks(r);
-  const targetIdx = idx + direction;
-  if (targetIdx < 0 || targetIdx >= list.length) return;
-  const temp = list[idx];
-  list[idx] = list[targetIdx];
-  list[targetIdx] = temp;
-  emit('update-subtasks', r.id, JSON.stringify(list));
+function resetSubFilters() {
+  filterPriority.value = 'all';
+  filterHasSubtasks.value = false;
+  filterRepeating.value = false;
+  filterOverdueOnly.value = false;
 }
 
-function handleToggleNoteChecklist(r: Reminder, lineIndex: number) {
-  if (!r.notes) return;
-  const lines = r.notes.split('\n');
-  if (lineIndex < 0 || lineIndex >= lines.length) return;
-  const line = lines[lineIndex];
-  if (line.includes('- [ ]')) {
-    lines[lineIndex] = line.replace('- [ ]', '- [x]');
-  } else if (line.includes('- [x]') || line.includes('- [X]')) {
-    lines[lineIndex] = line.replace(/- \[[xX]\]/, '- [ ]');
-  }
-  const newNotes = lines.join('\n');
-  emit('edit', { ...r, notes: newNotes });
+function handleClearAllSubFilters() {
+  resetSubFilters();
+  emit('clear-filters');
 }
 
 function handleRowSelectClick(e: MouseEvent, r: Reminder, currentList: Reminder[]) {
@@ -221,22 +165,60 @@ function handleRowSelectClick(e: MouseEvent, r: Reminder, currentList: Reminder[
 const filterPriority = ref<'all' | 'high' | 'p0' | 'p1'>('all');
 const filterHasSubtasks = ref<boolean>(false);
 const filterRepeating = ref<boolean>(false);
+const filterOverdueOnly = ref<boolean>(false);
 
 const expandedSubtasks = ref<Record<string, boolean>>({});
 const activeSnoozeMenuId = ref<string | null>(null);
+const snoozeFlipUp = ref(false);
+const snoozeMenuRef = ref<HTMLElement | null>(null);
+const snoozeMenuPos = ref<{ x: number; y: number }>({ x: 0, y: 0 });
+const activeSnoozeReminder = computed(() =>
+  activeSnoozeMenuId.value
+    ? props.reminders.find((item) => item.id === activeSnoozeMenuId.value) || null
+    : null
+);
 
 interface ReminderViewModel {
   tags: string[];
   subtasks: SubtaskItem[];
   progress: { total: number; done: number; pct: number } | null;
   time: string;
+  endTime: string;
   dateLabel: ReturnType<typeof formatDateLabel>;
   relativeTime: string;
   repeatLabel: string;
   near: boolean;
+  isOverdue: boolean;
   countdown: ReturnType<typeof getCountdownBadge>;
   urls: ReturnType<typeof extractUrls>;
   paths: ReturnType<typeof extractLocalPaths>;
+  metaItems: string[];
+  notePreview: string;
+}
+
+function formatDurationSummary(minutes: number): string {
+  if (minutes <= 0) return '';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+function buildNotePreview(
+  notes: string,
+  urls: ReturnType<typeof extractUrls>,
+  paths: ReturnType<typeof extractLocalPaths>,
+): string {
+  if (!notes) return '';
+  let text = notes;
+  for (const link of urls) {
+    text = text.replace(link.url, link.label);
+  }
+  for (const p of paths) {
+    text = text.replace(p.path, p.label);
+  }
+  return formatNotePreview(text);
 }
 
 const reminderViewModels = computed(() => {
@@ -245,21 +227,55 @@ const reminderViewModels = computed(() => {
   for (const reminder of props.reminders) {
     const subtasks = parseReminderSubtasks(reminder.subtasks);
     const done = subtasks.filter((item) => item.done).length;
+    const urls = extractUrls(reminder.notes);
+    const paths = extractLocalPaths(`${reminder.notes} ${reminder.title}`);
+    const repeatLabel = reminder.repeat_rule ? formatRepeatLabel(reminder.repeat_rule) : '';
+    const countdown = getCountdownBadge(reminder.scheduled_at);
+    const metaItems: string[] = [];
+    if (repeatLabel) metaItems.push(repeatLabel);
+    if (reminder.lead_minutes > 0) metaItems.push(`提前 ${reminder.lead_minutes} 分`);
+    if (reminder.duration_minutes > 0) metaItems.push(`${reminder.duration_minutes} 分钟`);
+
     map.set(reminder.id, {
       tags: parseReminderTags(reminder.tags),
       subtasks,
       progress: subtasks.length ? { total: subtasks.length, done, pct: Math.round(done / subtasks.length * 100) } : null,
       time: formatTime(reminder.scheduled_at),
+      endTime: formatEndTime(reminder.scheduled_at, reminder.duration_minutes),
       dateLabel: formatDateLabel(reminder.scheduled_at),
       relativeTime: formatRelativeTime(reminder.scheduled_at),
-      repeatLabel: formatRepeatLabel(reminder.repeat_rule),
+      repeatLabel,
       near: isNearDue(reminder.scheduled_at),
-      countdown: getCountdownBadge(reminder.scheduled_at),
-      urls: extractUrls(reminder.notes),
-      paths: extractLocalPaths(`${reminder.notes} ${reminder.title}`),
+      isOverdue:
+        reminder.status === 'expired' ||
+        (reminder.status === 'active' && (countdown.isPast || new Date(reminder.scheduled_at).getTime() < Date.now())),
+      countdown,
+      urls,
+      paths,
+      metaItems,
+      notePreview: buildNotePreview(reminder.notes, urls, paths),
     });
   }
   return map;
+});
+
+const hasActiveSubFilter = computed(() =>
+  filterPriority.value !== 'all' || filterHasSubtasks.value || filterRepeating.value || filterOverdueOnly.value
+);
+
+const subFilterCounts = computed(() => {
+  let high = 0;
+  let subtasks = 0;
+  let repeating = 0;
+  let overdue = 0;
+  for (const r of props.reminders) {
+    const vm = reminderViewModels.value.get(r.id);
+    if (r.priority === 'p0' || r.priority === 'p1') high++;
+    if ((vm?.subtasks.length || 0) > 0) subtasks++;
+    if (r.repeat_rule) repeating++;
+    if (vm?.isOverdue) overdue++;
+  }
+  return { high, subtasks, repeating, overdue };
 });
 
 function viewModel(reminder: Reminder): ReminderViewModel {
@@ -273,6 +289,7 @@ function applySecondaryFilters(items: Reminder[]): Reminder[] {
   else if (filterPriority.value === 'p1') filtered = filtered.filter((r) => r.priority === 'p1');
   if (filterHasSubtasks.value) filtered = filtered.filter((r) => viewModel(r).subtasks.length > 0);
   if (filterRepeating.value) filtered = filtered.filter((r) => Boolean(r.repeat_rule));
+  if (filterOverdueOnly.value) filtered = filtered.filter((r) => viewModel(r).isOverdue);
   return filtered;
 }
 
@@ -321,14 +338,26 @@ const contextMenuRef = ref<HTMLElement | null>(null);
 let contextMenuTrigger: HTMLElement | null = null;
 
 function showContextMenu(r: Reminder, trigger: HTMLElement | null, x: number, y: number) {
+  ensurePortalTarget();
+  activeSnoozeMenuId.value = null;
   contextMenuTrigger = trigger;
   contextMenu.value = {
     visible: true,
-    x: Math.min(Math.max(8, x), window.innerWidth - 190),
-    y: Math.min(Math.max(8, y), window.innerHeight - 280),
+    x: Math.min(Math.max(10, x), Math.max(10, window.innerWidth - 210)),
+    y: Math.min(Math.max(10, y), Math.max(10, window.innerHeight - 480)),
     reminder: r,
   };
-  nextTick(() => contextMenuRef.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+  nextTick(() => {
+    const menuEl = contextMenuRef.value;
+    if (menuEl) {
+      const rect = menuEl.getBoundingClientRect();
+      const maxX = Math.max(10, window.innerWidth - rect.width - 10);
+      const maxY = Math.max(10, window.innerHeight - rect.height - 10);
+      contextMenu.value.x = Math.min(Math.max(10, x), maxX);
+      contextMenu.value.y = Math.min(Math.max(10, y), maxY);
+      menuEl.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    }
+  });
 }
 
 function openContextMenu(e: MouseEvent, r: Reminder) {
@@ -373,24 +402,47 @@ function handleContextMenuKeydown(event: KeyboardEvent) {
 
 function handleWindowClick() {
   closeContextMenu();
+  activeSnoozeMenuId.value = null;
 }
 
 function handleListKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || document.querySelector('[role="dialog"]')) return;
-  if (contextMenu.value.visible) {
-    closeContextMenu(true);
-    event.stopImmediatePropagation();
-  } else if (activeInspectorReminder.value) {
-    activeInspectorReminder.value = null;
-    event.stopImmediatePropagation();
+  const target = event.target as HTMLElement | null;
+  const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+  if (event.key === 'Escape') {
+    const hasOtherDialog = Boolean(document.querySelector('[role="dialog"]'));
+    if (hasOtherDialog) return;
+    if (activeSnoozeMenuId.value) {
+      activeSnoozeMenuId.value = null;
+      event.stopImmediatePropagation();
+    } else if (contextMenu.value.visible) {
+      closeContextMenu(true);
+      event.stopImmediatePropagation();
+    }
+    return;
+  }
+
+  if (isTyping || contextMenu.value.visible || activeSnoozeMenuId.value) return;
+  if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && listRootRef.value?.contains(target)) {
+    const rows = Array.from(listRootRef.value.querySelectorAll<HTMLElement>('.task-row[data-reminder-id]'));
+    if (!rows.length) return;
+    const currentRow = target?.closest<HTMLElement>('.task-row[data-reminder-id]');
+    const idx = currentRow ? rows.indexOf(currentRow) : -1;
+    if (idx === -1) return;
+    event.preventDefault();
+    const nextIdx = event.key === 'ArrowDown' ? (idx + 1) % rows.length : (idx - 1 + rows.length) % rows.length;
+    rows[nextIdx].focus();
+    rows[nextIdx].scrollIntoView({ block: 'nearest' });
   }
 }
 
 onMounted(() => {
+  ensurePortalTarget();
   window.addEventListener('click', handleWindowClick);
   window.addEventListener('keydown', handleListKeydown);
 });
 onUnmounted(() => {
+  clearTitleClickTimer();
   window.removeEventListener('click', handleWindowClick);
   window.removeEventListener('keydown', handleListKeydown);
 });
@@ -412,7 +464,26 @@ async function handleReveal(path: string) {
 interface ReminderGroup {
   name: string;
   count: number;
+  doneCount: number;
+  totalMinutes: number;
+  overdueCount: number;
   items: Reminder[];
+}
+
+function buildGroup(name: string, items: Reminder[]): ReminderGroup {
+  const sorted = sortItems(items);
+  let doneCount = 0;
+  let totalMinutes = 0;
+  let overdueCount = 0;
+  for (const r of sorted) {
+    if (r.status === 'ended') {
+      doneCount++;
+    } else {
+      totalMinutes += r.duration_minutes > 0 ? r.duration_minutes : 30;
+    }
+    if (viewModel(r).isOverdue) overdueCount++;
+  }
+  return { name, count: sorted.length, doneCount, totalMinutes, overdueCount, items: sorted };
 }
 
 const groups = computed<ReminderGroup[]>(() => {
@@ -435,37 +506,36 @@ const groups = computed<ReminderGroup[]>(() => {
     }
 
     const res: ReminderGroup[] = [];
-    if (p0.length) res.push({ name: 'P0 · 紧急重要', count: p0.length, items: sortItems(p0) });
-    if (p1.length) res.push({ name: 'P1 · 重要规划', count: p1.length, items: sortItems(p1) });
-    if (p2.length) res.push({ name: 'P2 · 常规安排', count: p2.length, items: sortItems(p2) });
-    if (p3.length) res.push({ name: 'P3 · 低优先级', count: p3.length, items: sortItems(p3) });
+    if (p0.length) res.push(buildGroup('P0 · 紧急重要', p0));
+    if (p1.length) res.push(buildGroup('P1 · 重要规划', p1));
+    if (p2.length) res.push(buildGroup('P2 · 常规安排', p2));
+    if (p3.length) res.push(buildGroup('P3 · 低优先级', p3));
     return res;
   }
 
   if (groupBy.value === 'status') {
     const active: Reminder[] = [];
+    const expired: Reminder[] = [];
     const paused: Reminder[] = [];
     const ended: Reminder[] = [];
 
     for (const r of source) {
-      if (r.status === 'paused') paused.push(r);
+      if (r.status === 'expired') expired.push(r);
+      else if (r.status === 'paused') paused.push(r);
       else if (r.status === 'ended') ended.push(r);
       else active.push(r);
     }
 
     const res: ReminderGroup[] = [];
-    if (active.length) res.push({ name: '进行中', count: active.length, items: sortItems(active) });
-    if (paused.length) res.push({ name: '已暂停', count: paused.length, items: sortItems(paused) });
-    if (ended.length) res.push({ name: '已完成', count: ended.length, items: sortItems(ended) });
+    if (active.length) res.push(buildGroup('进行中', active));
+    if (expired.length) res.push(buildGroup('已过期', expired));
+    if (paused.length) res.push(buildGroup('已暂停', paused));
+    if (ended.length) res.push(buildGroup('已完成', ended));
     return res;
   }
 
   if (groupBy.value === 'none') {
-    return [{
-      name: '全部事项',
-      count: source.length,
-      items: sortItems(source),
-    }];
+    return [buildGroup('全部事项', source)];
   }
 
   // Default: groupBy === 'date'
@@ -473,10 +543,15 @@ const groups = computed<ReminderGroup[]>(() => {
   const tomorrow: Reminder[] = [];
   const upcoming: Reminder[] = [];
   const recurring: Reminder[] = [];
+  const expired: Reminder[] = [];
   const paused: Reminder[] = [];
   const ended: Reminder[] = [];
 
   for (const r of source) {
+    if (r.status === 'expired') {
+      expired.push(r);
+      continue;
+    }
     if (r.status === 'paused') {
       paused.push(r);
       continue;
@@ -502,15 +577,27 @@ const groups = computed<ReminderGroup[]>(() => {
   }
 
   const res: ReminderGroup[] = [];
-  if (today.length) res.push({ name: '今天', count: today.length, items: sortItems(today) });
-  if (tomorrow.length) res.push({ name: '明天', count: tomorrow.length, items: sortItems(tomorrow) });
-  if (upcoming.length) res.push({ name: '即将到来', count: upcoming.length, items: sortItems(upcoming) });
-  if (recurring.length) res.push({ name: '重复日程', count: recurring.length, items: sortItems(recurring) });
-  if (paused.length) res.push({ name: '已暂停', count: paused.length, items: sortItems(paused) });
-  if (ended.length) res.push({ name: '已完成', count: ended.length, items: sortItems(ended) });
+  if (today.length) res.push(buildGroup('今天', today));
+  if (tomorrow.length) res.push(buildGroup('明天', tomorrow));
+  if (upcoming.length) res.push(buildGroup('即将到来', upcoming));
+  if (recurring.length) res.push(buildGroup('重复日程', recurring));
+  if (expired.length) res.push(buildGroup('已过期', expired));
+  if (paused.length) res.push(buildGroup('已暂停', paused));
+  if (ended.length) res.push(buildGroup('已完成', ended));
 
   return res;
 });
+
+const allGroupsCollapsed = computed(() =>
+  groups.value.length > 0 && groups.value.every((g) => Boolean(collapsedGroups.value[g.name]))
+);
+
+function toggleAllGroupsCollapse() {
+  const next = !allGroupsCollapsed.value;
+  for (const g of groups.value) {
+    collapsedGroups.value[g.name] = next;
+  }
+}
 
 const visibleReminderIds = computed(() => groups.value.flatMap((group) => group.items.map((item) => item.id)));
 const allVisibleSelected = computed(() => {
@@ -561,8 +648,37 @@ function handleToggleSubtaskItem(r: Reminder, itemIdx: number) {
   }
 }
 
-function toggleSnoozeMenu(id: string) {
-  activeSnoozeMenuId.value = activeSnoozeMenuId.value === id ? null : id;
+function toggleSnoozeMenu(id: string, event?: MouseEvent) {
+  ensurePortalTarget();
+  contextMenu.value.visible = false;
+  if (activeSnoozeMenuId.value === id) {
+    activeSnoozeMenuId.value = null;
+    snoozeFlipUp.value = false;
+    return;
+  }
+  const rect = (event?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect();
+  snoozeFlipUp.value = rect ? window.innerHeight - rect.bottom < 260 : false;
+  if (rect) {
+    snoozeMenuPos.value = {
+      x: Math.max(10, Math.min(rect.right - 156, window.innerWidth - 166)),
+      y: snoozeFlipUp.value ? Math.max(10, rect.top - 246) : Math.min(rect.bottom + 6, window.innerHeight - 250),
+    };
+  }
+  activeSnoozeMenuId.value = id;
+  if (rect) {
+    nextTick(() => {
+      const menuEl = snoozeMenuRef.value;
+      if (!menuEl) return;
+      const menuRect = menuEl.getBoundingClientRect();
+      const shouldFlipUp = rect.bottom + 6 + menuRect.height > window.innerHeight - 12 && rect.top - 6 - menuRect.height >= 10;
+      snoozeFlipUp.value = shouldFlipUp;
+      const x = Math.min(Math.max(10, rect.right - menuRect.width), Math.max(10, window.innerWidth - menuRect.width - 10));
+      const y = shouldFlipUp
+        ? Math.max(10, rect.top - menuRect.height - 6)
+        : Math.min(rect.bottom + 6, Math.max(10, window.innerHeight - menuRect.height - 10));
+      snoozeMenuPos.value = { x, y };
+    });
+  }
 }
 
 function handleQuickSnooze(r: Reminder, minutes: number) {
@@ -604,11 +720,42 @@ function snoozeToNextMonday(r: Reminder) {
 const inlineEditingId = ref<string | null>(null);
 const inlineTitle = ref('');
 const newSubtaskMap = ref<Record<string, string>>({});
+let titleClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearTitleClickTimer() {
+  if (titleClickTimer) {
+    clearTimeout(titleClickTimer);
+    titleClickTimer = null;
+  }
+}
+
+function handleTaskRowClick(e: MouseEvent, r: Reminder) {
+  emit('activate', r.id);
+  const target = e.target as HTMLElement | null;
+  if (target?.closest('.task-title')) {
+    clearTitleClickTimer();
+    if (e.detail >= 2) return;
+    titleClickTimer = setTimeout(() => {
+      titleClickTimer = null;
+      emit('edit', r);
+    }, 180);
+    return;
+  }
+  emit('edit', r);
+}
 
 function startInlineEdit(r: Reminder) {
+  clearTitleClickTimer();
   inlineEditingId.value = r.id;
   inlineTitle.value = r.title;
+  nextTick(() => {
+    const input = listRootRef.value?.querySelector<HTMLInputElement>('.inline-title-input');
+    input?.focus();
+    input?.select();
+  });
 }
+
+const dailyShanshuiVerse = computed(() => getDailyShanshuiProverb(new Date()));
 
 function saveInlineEdit(r: Reminder) {
   if (!inlineEditingId.value) return;
@@ -638,7 +785,7 @@ function handleInlineAddSubtask(r: Reminder) {
 </script>
 
 <template>
-  <div ref="listRootRef" class="reminder-list">
+  <div ref="listRootRef" class="reminder-list" :class="{ 'has-selection': selectedIds.length > 0 }">
     <!-- Controls Bar -->
     <div class="list-controls-bar">
       <div class="controls-left">
@@ -657,34 +804,70 @@ function handleInlineAddSubtask(r: Reminder) {
           </span>
           <span>{{ allVisibleSelected ? '取消全选' : '全选当前' }}</span>
         </button>
-        <span class="total-count">共 {{ reminders.length }} 项日程</span>
+        <span class="total-count tabular-nums">
+          <template v-if="hasActiveSubFilter">显示 {{ visibleReminderIds.length }} / {{ reminders.length }} 项</template>
+          <template v-else>共 {{ reminders.length }} 项日程</template>
+        </span>
 
         <!-- Quick filter pills (Round 29) -->
         <div class="sub-filters">
           <button
             class="sub-filter-pill"
-            :class="{ active: filterPriority === 'all' }"
-            @click="filterPriority = 'all'"
+            :class="{ active: !hasActiveSubFilter }"
+            @click="resetSubFilters"
           >全部</button>
           <button
             class="sub-filter-pill"
             :class="{ active: filterPriority === 'high' }"
             @click="filterPriority = filterPriority === 'high' ? 'all' : 'high'"
-          >高优先级</button>
+          >
+            <span>高优先级</span>
+            <span v-if="subFilterCounts.high > 0" class="pill-count tabular-nums">{{ subFilterCounts.high }}</span>
+          </button>
+          <button
+            v-if="subFilterCounts.overdue > 0 || filterOverdueOnly"
+            class="sub-filter-pill overdue-pill"
+            :class="{ active: filterOverdueOnly }"
+            @click="filterOverdueOnly = !filterOverdueOnly"
+          >
+            <span>已逾期</span>
+            <span v-if="subFilterCounts.overdue > 0" class="pill-count tabular-nums">{{ subFilterCounts.overdue }}</span>
+          </button>
           <button
             class="sub-filter-pill"
             :class="{ active: filterHasSubtasks }"
             @click="filterHasSubtasks = !filterHasSubtasks"
-          >含子任务</button>
+          >
+            <span>含子任务</span>
+            <span v-if="subFilterCounts.subtasks > 0" class="pill-count tabular-nums">{{ subFilterCounts.subtasks }}</span>
+          </button>
           <button
             class="sub-filter-pill"
             :class="{ active: filterRepeating }"
             @click="filterRepeating = !filterRepeating"
-          >重复日程</button>
+          >
+            <span>重复日程</span>
+            <span v-if="subFilterCounts.repeating > 0" class="pill-count tabular-nums">{{ subFilterCounts.repeating }}</span>
+          </button>
+          <button
+            v-if="hasActiveSubFilter"
+            class="sub-filter-pill reset-pill"
+            title="重置次级筛选"
+            @click="resetSubFilters"
+          >重置</button>
         </div>
       </div>
 
       <div class="controls-right">
+        <button
+          v-if="groups.length > 1"
+          type="button"
+          class="sub-filter-pill collapse-all-btn"
+          :title="allGroupsCollapsed ? '展开所有分组' : '收起所有分组'"
+          @click="toggleAllGroupsCollapse"
+        >
+          {{ allGroupsCollapsed ? '展开分组' : '收起分组' }}
+        </button>
         <div class="control-dropdown-wrap">
           <span class="sort-label">分组</span>
           <ScrolltideSelect
@@ -727,30 +910,40 @@ function handleInlineAddSubtask(r: Reminder) {
 
     <!-- Empty State -->
     <div v-else-if="reminders.length === 0 || groups.length === 0" class="empty-state st-reticle">
-      <div class="empty-icon" aria-hidden="true">
-        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="20" cy="20" r="16" stroke-dasharray="3 3" opacity="0.55" />
-          <circle cx="20" cy="20" r="9" />
-          <path d="M20 15v5l3.5 2" stroke-linecap="round" stroke-linejoin="round" />
+      <div class="empty-icon empty-shanshui-moon" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5" width="54" height="54">
+          <circle cx="32" cy="32" r="27" stroke-dasharray="3 3" opacity="0.45" />
+          <circle cx="43" cy="21" r="4.5" fill="var(--seal-red, currentColor)" stroke="none" opacity="0.82" />
+          <path d="M9 40 Q20 26 30 35 T55 34" stroke="currentColor" stroke-linecap="round" opacity="0.85" />
+          <path d="M12 45 Q26 38 38 43 T53 43" stroke="currentColor" stroke-linecap="round" opacity="0.5" />
+          <path d="M18 50 H46" stroke="currentColor" stroke-linecap="round" opacity="0.3" />
         </svg>
       </div>
       <h3 class="empty-title">{{ reminders.length === 0 ? '当前暂无匹配日程' : '当前筛选没有结果' }}</h3>
-      <p class="empty-subtitle">{{ reminders.length === 0 ? '可在上方指令栏快速录入，或使用 AI Skein 批量规划' : '尝试调整优先级、子任务或循环提醒筛选条件' }}</p>
+      <p class="empty-subtitle">{{ reminders.length === 0 ? `「${dailyShanshuiVerse.text}」—— ${dailyShanshuiVerse.source}` : '尝试调整优先级、已逾期、子任务或循环提醒筛选条件' }}</p>
       <div class="empty-actions">
-        <button class="primary-btn" @click="$emit('open-create')">
-          <span>＋ 新建日程</span>
+        <button v-if="reminders.length > 0" class="primary-btn" @click="handleClearAllSubFilters">
+          <span>清除当前筛选</span>
+        </button>
+        <button :class="reminders.length === 0 ? 'primary-btn' : 'empty-sec-btn'" @click="$emit('open-create')">
+          <span class="icon-inline">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>新建日程</span>
+          </span>
         </button>
         <button class="empty-sec-btn" @click="$emit('open-ai')">
           <span>AI 规划</span>
         </button>
-        <button class="empty-sec-btn" @click="$emit('clear-filters')">
+        <button v-if="reminders.length === 0" class="empty-sec-btn" @click="handleClearAllSubFilters">
           <span>清除筛选</span>
         </button>
       </div>
     </div>
 
     <!-- Groups List -->
-    <div v-else class="reminder-list-layout" :class="{ 'with-inspector': Boolean(activeInspectorReminder) }">
+    <div v-else class="reminder-list-layout">
       <div class="groups-wrap">
         <div v-for="g in groups" :key="g.name" class="group-section">
           <button
@@ -760,9 +953,22 @@ function handleInlineAddSubtask(r: Reminder) {
             :aria-controls="`agenda-group-${g.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '-')}`"
             @click="toggleGroupCollapse(g.name)"
           >
-            <span class="group-collapse-arrow">{{ collapsedGroups[g.name] ? '▶' : '▼' }}</span>
+            <span class="group-collapse-arrow" :class="{ expanded: !collapsedGroups[g.name] }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
             <span class="group-title">{{ g.name }}</span>
             <span class="group-badge">{{ g.count }}</span>
+            <span v-if="g.doneCount > 0 && g.doneCount < g.count" class="group-meta-pill done tabular-nums">
+              已完 {{ g.doneCount }}/{{ g.count }}
+            </span>
+            <span v-if="g.totalMinutes > 0" class="group-meta-pill tabular-nums">
+              {{ formatDurationSummary(g.totalMinutes) }}
+            </span>
+            <span v-if="g.overdueCount > 0" class="group-meta-pill overdue tabular-nums">
+              逾期 {{ g.overdueCount }}
+            </span>
           </button>
 
           <div v-if="!collapsedGroups[g.name]" :id="`agenda-group-${g.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '-')}`" class="group-cards" role="listbox" aria-multiselectable="true">
@@ -776,197 +982,319 @@ function handleInlineAddSubtask(r: Reminder) {
               :aria-selected="isSelected(r.id)"
               :class="{
                 selected: isSelected(r.id),
-                'active-focus': activeId === r.id || activeInspectorReminder?.id === r.id,
+                'active-focus': activeId === r.id,
                 'is-pinned': r.is_pinned,
                 near: viewModel(r).near && r.status === 'active',
+                overdue: viewModel(r).isOverdue,
+                'menu-open': activeSnoozeMenuId === r.id,
                 paused: r.status === 'paused',
+                expired: r.status === 'expired',
                 ended: r.status === 'ended',
               }"
               @focus="$emit('activate', r.id)"
-              @click="$emit('activate', r.id); toggleInspector(r)"
-              @keydown.enter.prevent="toggleInspector(r)"
+              @click="(e) => handleTaskRowClick(e, r)"
+              @keydown.enter.prevent="$emit('edit', r)"
+              @keydown.f2.prevent="startInlineEdit(r)"
               @contextmenu="openContextMenu($event, r)"
               @keydown.shift.f10.prevent="openKeyboardMenu($event, r)"
             >
-              <!-- Direct Finish / Status Circle -->
-              <button
-                class="task-complete-btn"
-                :class="{ completed: r.status === 'ended', paused: r.status === 'paused' }"
-                :title="r.status === 'ended' ? '点击重新恢复未完成' : '点击标记完成'"
-                :aria-label="r.status === 'ended' ? `重新开启 ${r.title}` : `完成 ${r.title}`"
-                :aria-pressed="r.status === 'ended'"
-                @click.stop="$emit('toggle-status', r)"
-              >
-                <svg v-if="r.status === 'ended'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="10" height="10">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </button>
-
-              <!-- Multi-select Checkbox (Shift + Click Range) -->
-              <button
-                class="task-check"
-                :class="{ checked: isSelected(r.id) }"
-                title="多选操作 (按住 Shift 连续多选)"
-                :aria-label="isSelected(r.id) ? `取消选择 ${r.title}` : `选择 ${r.title}`"
-                :aria-pressed="isSelected(r.id)"
-                @click.stop="handleRowSelectClick($event, r, g.items)"
-              >
-                <svg v-if="isSelected(r.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </button>
-
-            <!-- Star Pin Button -->
-            <button
-              class="pin-star-btn"
-              :class="{ active: r.is_pinned }"
-              :title="r.is_pinned ? '取消置顶' : '置顶日程'"
-              @click.stop="$emit('toggle-pin', r.id)"
-            >
-              ★
-            </button>
-
-            <!-- Time Column -->
-            <div class="time-col">
-              <span class="time-text tabular-nums">{{ viewModel(r).time }}</span>
-              <span class="date-badge">{{ viewModel(r).dateLabel.label }}</span>
-            </div>
-
-            <!-- Main Content -->
-            <div class="main-col">
-              <div class="title-line">
-                <!-- Pinned Tag -->
-                <span v-if="r.is_pinned" class="badge-pinned">置顶</span>
-
-                <!-- Priority Badge (Round 5) -->
-                <span
-                  v-if="r.priority && r.priority !== 'p2'"
-                  class="badge-priority"
-                  :class="r.priority"
+              <!-- Compact Lead Controls (Complete Circle + Multi-select Checkbox) -->
+              <div class="row-lead-controls" @click.stop>
+                <button
+                  class="task-complete-btn"
+                  :class="{ completed: r.status === 'ended', paused: r.status === 'paused', expired: r.status === 'expired' }"
+                  :title="r.status === 'ended' ? '点击重新恢复未完成' : '点击标记完成'"
+                  :aria-label="r.status === 'ended' ? `重新开启 ${r.title}` : `完成 ${r.title}`"
+                  :aria-pressed="r.status === 'ended'"
+                  @click.stop="$emit('toggle-status', r)"
                 >
-                  {{ r.priority === 'p0' ? 'P0 紧急' : (r.priority === 'p1' ? 'P1 重要' : 'P3 低') }}
-                </span>
+                  <svg v-if="r.status === 'ended'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="10" height="10">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </button>
 
-                <!-- Inline Title Input or Title Span -->
-                <input
-                  v-if="inlineEditingId === r.id"
-                  v-model="inlineTitle"
-                  type="text"
-                  class="inline-title-input"
-                  @click.stop
-                  @keydown.enter.stop="saveInlineEdit(r)"
-                  @keydown.esc.stop="cancelInlineEdit"
-                  @blur="saveInlineEdit(r)"
-                />
-                <span
-                  v-else
-                  class="task-title"
-                  :class="{ 'title-ended': r.status === 'ended' }"
-                  title="双击编辑，单击打开详情"
-                  @dblclick.stop="startInlineEdit(r)"
-                  v-html="highlightMatch(r.title, searchQuery)"
-                ></span>
-
-                <!-- Colored Tag Badges (Round 26) -->
-                <span
-                  v-for="tag in parseTags(r.tags, r)"
-                  :key="tag"
-                  class="tag-badge"
-                  :style="{
-                    backgroundColor: getTagColor(tag).bg,
-                    color: getTagColor(tag).text,
-                    borderColor: getTagColor(tag).border,
-                  }"
-                  title="点击按此标签筛选"
-                  @click.stop="$emit('filter-tag', tag)"
+                <button
+                  class="task-check"
+                  :class="{ checked: isSelected(r.id) }"
+                  title="多选操作 (按住 Shift 连续多选)"
+                  :aria-label="isSelected(r.id) ? `取消选择 ${r.title}` : `选择 ${r.title}`"
+                  :aria-pressed="isSelected(r.id)"
+                  @click.stop="handleRowSelectClick($event, r, g.items)"
                 >
-                  #{{ tag }}
-                </span>
+                  <svg v-if="isSelected(r.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </button>
               </div>
 
-              <!-- Semantic Chips -->
+              <!-- Time Column -->
+              <div class="time-col">
+                <span class="time-text tabular-nums" :class="{ overdue: viewModel(r).isOverdue }">{{ viewModel(r).time }}</span>
+                <span v-if="viewModel(r).endTime" class="time-end tabular-nums">~{{ viewModel(r).endTime }}</span>
+                <span class="date-badge">{{ viewModel(r).dateLabel.label }}</span>
+              </div>
+
+              <!-- Main Content -->
+              <div class="main-col">
+                <div class="title-header-row">
+                  <div class="title-line">
+                    <!-- Pinned Tag -->
+                    <span v-if="r.is_pinned" class="badge-pinned">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                      <span>置顶</span>
+                    </span>
+
+                    <!-- Priority Badge (Round 5) -->
+                    <span
+                      v-if="r.priority && r.priority !== 'p2'"
+                      class="badge-priority"
+                      :class="r.priority"
+                    >
+                      {{ r.priority === 'p0' ? 'P0 紧急' : (r.priority === 'p1' ? 'P1 重要' : 'P3 低') }}
+                    </span>
+
+                    <!-- Inline Title Input or Title Span -->
+                    <input
+                      v-if="inlineEditingId === r.id"
+                      v-model="inlineTitle"
+                      type="text"
+                      class="inline-title-input"
+                      @click.stop
+                      @keydown.enter.stop="saveInlineEdit(r)"
+                      @keydown.esc.stop="cancelInlineEdit"
+                      @blur="saveInlineEdit(r)"
+                    />
+                    <span
+                      v-else
+                      class="task-title"
+                      :class="{ 'title-ended': r.status === 'ended' }"
+                      title="双击或按 F2 重命名，单击打开编辑"
+                      @dblclick.stop="startInlineEdit(r)"
+                      v-html="highlightMatch(r.title, searchQuery)"
+                    ></span>
+
+                    <!-- Colored Tag Badges (max 3 inline + overflow count) -->
+                    <span
+                      v-for="tag in parseTags(r.tags, r).slice(0, 3)"
+                      :key="tag"
+                      class="tag-badge"
+                      :style="{
+                        backgroundColor: getTagColor(tag).bg,
+                        color: getTagColor(tag).text,
+                        borderColor: getTagColor(tag).border,
+                      }"
+                      title="点击按此标签筛选"
+                      @click.stop="$emit('filter-tag', tag)"
+                    >
+                      #{{ tag }}
+                    </span>
+                    <span
+                      v-if="parseTags(r.tags, r).length > 3"
+                      class="tag-badge tag-overflow-badge"
+                      :title="parseTags(r.tags, r).map(t => `#${t}`).join(' · ')"
+                    >
+                      +{{ parseTags(r.tags, r).length - 3 }}
+                    </span>
+                  </div>
+
+                  <!-- Streamlined In-flow Action Capsule (zero overlap with title/tags) -->
+                  <div class="task-actions-capsule" @click.stop>
+                    <button
+                      class="icon-btn pin-action-btn"
+                      :class="{ active: r.is_pinned }"
+                      :title="r.is_pinned ? '取消置顶' : '置顶日程'"
+                      @click.stop="$emit('toggle-pin', r.id)"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" :fill="r.is_pinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    </button>
+
+                    <div v-if="r.status === 'active' || r.status === 'expired'" class="snooze-action-wrap">
+                      <button
+                        class="icon-btn"
+                        :class="{ active: activeSnoozeMenuId === r.id }"
+                        title="快捷顺延/推迟日程"
+                        aria-haspopup="menu"
+                        :aria-expanded="activeSnoozeMenuId === r.id"
+                        @click.stop="toggleSnoozeMenu(r.id, $event)"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                          <polyline points="12 6 12 12 16 14" />
+                          <circle cx="12" cy="12" r="10" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <button
+                      v-if="r.status === 'active' || r.status === 'expired'"
+                      class="icon-btn focus-action-btn"
+                      :class="{ active: focusEngineState.reminderId === r.id && focusEngineState.isRunning }"
+                      title="启动番茄专注 (P)"
+                      aria-label="启动番茄专注"
+                      @click.stop="$emit('start-focus', r)"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                        <circle cx="12" cy="13" r="8" />
+                        <path d="M12 9v4l2.5 1.5" />
+                        <path d="M9 2h6" />
+                      </svg>
+                    </button>
+
+                    <button class="icon-btn" title="编辑日程" @click.stop="$emit('edit', r)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+
+                    <button class="icon-btn" title="更多操作" aria-label="更多操作" @click.stop="openActionMenu($event, r)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <circle cx="5" cy="12" r="1.7" />
+                        <circle cx="12" cy="12" r="1.7" />
+                        <circle cx="19" cy="12" r="1.7" />
+                      </svg>
+                    </button>
+
+                    <button class="icon-btn delete-btn" title="删除日程" @click.stop="$emit('delete', r.id)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+              <!-- Unified Status / Interactive Chips + Quiet Inline Metadata -->
               <div class="chips-row">
-                <span v-if="r.repeat_rule" class="chip chip-repeat">
-                  {{ viewModel(r).repeatLabel }}
-                </span>
-
-                <span v-if="viewModel(r).near && r.status === 'active'" class="chip chip-near">
-                  即将到期
-                </span>
-
-                <span v-if="r.status === 'active'" class="chip chip-countdown">
-                  {{ viewModel(r).relativeTime }}
-                </span>
-
-                <!-- Dynamic countdown badge (Round 44) -->
                 <span
-                  v-if="viewModel(r).countdown.showBadge"
-                  class="chip chip-countdown"
-                  :class="{ 'chip-urgent': viewModel(r).countdown.isUrgent }"
+                  class="chip chip-inline-time tabular-nums"
+                  :class="{ overdue: viewModel(r).isOverdue }"
                 >
-                  ⏳ {{ viewModel(r).countdown.text }}
-                </span>
-
-                <!-- Local File Path Revealer (Round 53) -->
-                <button
-                  v-for="p in viewModel(r).paths"
-                  :key="p.path"
-                  class="chip chip-finder"
-                  :disabled="Boolean(revealingPath)"
-                  :aria-busy="revealingPath === p.path"
-                  :title="'在访达中显示: ' + p.path"
-                  @click.stop="handleReveal(p.path)"
-                >
-                  📁 访达: {{ p.label }}
-                </button>
-
-                <span v-if="r.lead_minutes > 0" class="chip chip-lead">
-                  提前 {{ r.lead_minutes }} 分
-                </span>
-
-                <span v-if="r.duration_minutes > 0" class="chip chip-range">
-                  {{ r.duration_minutes }} 分钟
-                </span>
-
-                <!-- Subtasks Progress Pill with progress bar (Round 33) -->
-                <button
-                  v-if="viewModel(r).subtasks.length > 0"
-                  type="button"
-                  class="chip chip-subtask"
-                  :class="{ expanded: expandedSubtasks[r.id] }"
-                  @click="toggleSubtaskExpand(r.id)"
-                >
-                  <span class="st-bar-fill" :style="{ width: `${viewModel(r).progress?.pct || 0}%` }"></span>
-                  <span class="st-bar-text">☑️ {{ viewModel(r).progress?.done }}/{{ viewModel(r).progress?.total }} ({{ viewModel(r).progress?.pct }}%)</span>
-                </button>
-
-                <!-- URL link pills (Round 35) -->
-                <a
-                  v-for="link in viewModel(r).urls"
-                  :key="link.url"
-                  :href="link.url"
-                  target="_blank"
-                  class="chip chip-link"
-                  :title="link.url"
-                  @click.stop
-                >
-                  🔗 {{ link.label }}
-                </a>
-
-                <span v-if="r.notes" class="chip chip-notes" :title="r.notes" v-html="highlightMatch(r.notes, searchQuery)">
+                  {{ viewModel(r).dateLabel.label }} {{ viewModel(r).time }}{{ viewModel(r).endTime ? `-${viewModel(r).endTime}` : '' }}
                 </span>
 
                 <span v-if="r.status === 'paused'" class="chip chip-paused">
                   已暂停
                 </span>
 
-                <span v-if="r.status === 'ended'" class="chip chip-ended">
+                <span v-else-if="r.status === 'ended'" class="chip chip-ended">
                   已完成
+                </span>
+
+                <span v-else-if="r.status === 'expired'" class="chip chip-expired">
+                  已过期
+                </span>
+
+                <span
+                  v-else-if="viewModel(r).countdown.showBadge"
+                  class="chip chip-countdown icon-inline"
+                  :class="{ 'chip-urgent': viewModel(r).countdown.isUrgent || viewModel(r).near }"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <polyline points="12 7 12 12 15.5 14" />
+                  </svg>
+                  <span>{{ viewModel(r).near && !viewModel(r).countdown.text.includes('逾期') ? `即将 · ${viewModel(r).countdown.text}` : viewModel(r).countdown.text }}</span>
+                </span>
+
+                <span v-else class="chip chip-countdown">
+                  {{ viewModel(r).relativeTime }}
+                </span>
+
+                <!-- Active or Accumulated Focus Telemetry Pill -->
+                <button
+                  v-if="focusEngineState.reminderId === r.id && hasLiveFocusActivity"
+                  type="button"
+                  class="chip chip-focus-live tabular-nums"
+                  :class="{ running: focusEngineState.isRunning }"
+                  title="点击打开当前专注计时弹窗"
+                  @click.stop="$emit('start-focus', r)"
+                >
+                  {{ focusEngineState.isRunning ? '专注中' : '已暂停' }} {{ focusDisplayClock }}
+                </button>
+                <span
+                  v-else-if="reminderFocusMap.get(r.id)"
+                  class="chip chip-focus-total tabular-nums"
+                  :title="`累计已专注 ${reminderFocusMap.get(r.id)?.sessions} 轮`"
+                >
+                  已专注 {{ formatMinutesCompact(reminderFocusMap.get(r.id)?.totalMinutes || 0) }}
+                </span>
+
+                <!-- Subtasks Progress Pill -->
+                <button
+                  v-if="viewModel(r).subtasks.length > 0"
+                  type="button"
+                  class="chip chip-subtask"
+                  :class="{ expanded: expandedSubtasks[r.id] }"
+                  title="展开或收起子任务"
+                  @click.stop="toggleSubtaskExpand(r.id)"
+                >
+                  <span class="st-bar-fill" :style="{ width: `${viewModel(r).progress?.pct || 0}%` }"></span>
+                  <span class="st-bar-text icon-inline">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="9 11 12 14 22 4" />
+                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </svg>
+                    <span>{{ viewModel(r).progress?.done }}/{{ viewModel(r).progress?.total }}</span>
+                  </span>
+                </button>
+
+                <!-- Local File Path Revealer -->
+                <button
+                  v-for="p in viewModel(r).paths"
+                  :key="p.path"
+                  class="chip chip-finder icon-inline"
+                  :disabled="Boolean(revealingPath)"
+                  :aria-busy="revealingPath === p.path"
+                  :title="'在访达中显示: ' + p.path"
+                  @click.stop="handleReveal(p.path)"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <span>访达: {{ p.label }}</span>
+                </button>
+
+                <!-- URL Link Pills -->
+                <a
+                  v-for="link in viewModel(r).urls"
+                  :key="link.url"
+                  :href="link.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="chip chip-link icon-inline"
+                  :title="link.url"
+                  @click.stop
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                  <span>{{ link.label }}</span>
+                </a>
+
+                <!-- Calm inline secondary metadata -->
+                <span v-if="viewModel(r).metaItems.length > 0" class="meta-inline-group">
+                  <template v-for="(item, idx) in viewModel(r).metaItems" :key="item">
+                    <span v-if="idx > 0" class="meta-inline-dot" aria-hidden="true">·</span>
+                    <span class="meta-inline-item">{{ item }}</span>
+                  </template>
                 </span>
               </div>
 
+              <!-- Clean 1-line Note Preview -->
+              <p
+                v-if="viewModel(r).notePreview"
+                class="task-note-preview"
+                :title="r.notes"
+                v-html="highlightMatch(viewModel(r).notePreview, searchQuery)"
+              ></p>
+
               <!-- Inline Expanded Subtasks Checklist (Round 7) -->
-              <div v-if="expandedSubtasks[r.id]" class="inline-subtasks-panel">
+              <div v-if="expandedSubtasks[r.id]" class="inline-subtasks-panel" @click.stop>
                 <div
                   v-for="(st, idx) in viewModel(r).subtasks"
                   :key="st.id"
@@ -989,483 +1317,197 @@ function handleInlineAddSubtask(r: Reminder) {
                 </div>
               </div>
             </div>
-
-            <!-- Floating Action Capsule (Round 8: Quick Snooze Presets) -->
-            <div class="task-actions-capsule">
-              <!-- Focus Pomodoro Button (Round 23) -->
-              <button
-                v-if="r.status === 'active'"
-                class="icon-btn focus-action-btn"
-                title="开启 25 分钟番茄专注模式"
-                @click="$emit('start-focus', r)"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <circle cx="12" cy="12" r="9" />
-                  <polyline points="12 7 12 12 15 15" />
-                </svg>
-              </button>
-
-              <!-- Duplicate / Clone Button (Round 32) -->
-              <button
-                class="icon-btn"
-                title="复刻此日程 (Duplicate)"
-                @click="$emit('duplicate', r)"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              </button>
-
-              <!-- Quick Snooze Trigger -->
-              <div class="snooze-action-wrap">
-                <button
-                  v-if="r.status === 'active'"
-                  class="icon-btn"
-                  title="快捷顺延/推迟日程"
-                  @click="toggleSnoozeMenu(r.id)"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                    <polyline points="12 6 12 12 16 14" />
-                    <circle cx="12" cy="12" r="10" />
-                  </svg>
-                </button>
-
-                <!-- Snooze Presets Popover Menu (Round 8, enhanced in R51) -->
-                <div v-if="activeSnoozeMenuId === r.id" class="snooze-dropdown glass-panel">
-                  <div class="snooze-menu-head">智能推迟 / 顺延:</div>
-                  <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 15)">+15 分钟</button>
-                  <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 30)">+30 分钟</button>
-                  <button class="snooze-opt-btn" @click="handleQuickSnooze(r, 60)">+1 小时</button>
-                  <button class="snooze-opt-btn" @click="snoozeToTomorrowMorning(r)">明早 09:00</button>
-                  <button class="snooze-opt-btn" @click="snoozeToWeekend(r)">本周末 (周六)</button>
-                  <button class="snooze-opt-btn" @click="snoozeToNextMonday(r)">下周一 09:00</button>
-                </div>
-              </div>
-
-              <!-- Pause / Resume -->
-              <button
-                v-if="r.status !== 'ended'"
-                class="icon-btn"
-                :title="r.status === 'paused' ? '恢复提醒' : '暂停提醒（不会完成日程）'"
-                @click.stop="$emit('toggle-pause', r)"
-              >
-                <svg v-if="r.status === 'active'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <rect x="6" y="4" width="4" height="16" />
-                  <rect x="14" y="4" width="4" height="16" />
-                </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-              </button>
-
-              <!-- Edit -->
-              <button class="icon-btn" title="编辑日程" @click="$emit('edit', r)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </button>
-
-              <!-- Delivery History -->
-              <button class="icon-btn" title="查看触发历史" @click="$emit('view-history', r)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-              </button>
-
-              <!-- Inspector Button -->
-              <button
-                class="icon-btn inspector-btn"
-                :class="{ active: activeInspectorReminder?.id === r.id }"
-                title="查看属性详情面板 (I)"
-                @click.stop="toggleInspector(r)"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <line x1="15" y1="3" x2="15" y2="21" />
-                </svg>
-              </button>
-
-              <button class="icon-btn" title="更多操作" aria-label="更多操作" @click="openActionMenu($event, r)">•••</button>
-
-              <!-- Delete -->
-              <button class="icon-btn delete-btn" title="删除日程" @click="$emit('delete', r.id)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-              </button>
-            </div>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Side Inspector Panel (Midwater / Linear Caliber) -->
-    <aside v-if="activeInspectorReminder" class="task-inspector-panel st-reticle">
-      <!-- Inspector Header -->
-      <div class="inspector-header">
-        <div class="inspector-header-left">
-          <button
-            class="inspector-badge-pri"
-            :class="activeInspectorReminder.priority || 'p2'"
-            title="点击切换优先级 (P0 → P1 → P2 → P3)"
-            @click="cycleInspectorPriority(activeInspectorReminder)"
-          >
-            {{ (activeInspectorReminder.priority || 'p2').toUpperCase() }}
-          </button>
-
-          <button
-            class="inspector-badge-status"
-            :class="activeInspectorReminder.status"
-            title="点击切换完成状态"
-            @click="$emit('toggle-status', activeInspectorReminder)"
-          >
-            {{ activeInspectorReminder.status === 'ended' ? '已完成' : (activeInspectorReminder.status === 'paused' ? '已暂停' : '进行中') }}
-          </button>
-
-          <button
-            class="pin-star-btn"
-            :class="{ active: activeInspectorReminder.is_pinned }"
-            :title="activeInspectorReminder.is_pinned ? '取消置顶' : '置顶日程'"
-            @click="$emit('toggle-pin', activeInspectorReminder.id)"
-          >
-            ★
-          </button>
-        </div>
-
-        <button class="icon-btn inspector-close-btn" title="关闭检查器 (Esc)" @click="activeInspectorReminder = null">
-          ✕
-        </button>
-      </div>
-
-      <!-- Inspector Scrollable Body -->
-      <div class="inspector-body custom-scroll">
-        <!-- Title Section -->
-        <div class="inspector-section">
-          <label class="inspector-field-label">日程标题</label>
-          <input
-            type="text"
-            class="inspector-title-input"
-            :value="activeInspectorReminder.title"
-            @change="handleInspectorTitleChange(activeInspectorReminder, ($event.target as HTMLInputElement).value)"
-          />
-        </div>
-
-        <!-- Scheduled Time & Fast Reschedule -->
-        <div class="inspector-section">
-          <label class="inspector-field-label">排期与顺延</label>
-          <div class="inspector-time-box">
-            <span class="inspector-time-str">
-              🕒 {{ viewModel(activeInspectorReminder).dateLabel.label }} {{ viewModel(activeInspectorReminder).time }}
-            </span>
-            <span
-              v-if="viewModel(activeInspectorReminder).countdown.showBadge"
-              class="countdown-badge"
-              :class="{ urgent: viewModel(activeInspectorReminder).countdown.isUrgent }"
-            >
-              {{ viewModel(activeInspectorReminder).countdown.text }}
-            </span>
-          </div>
-
-          <div class="inspector-snooze-chips">
-            <button class="snooze-chip" title="推迟15分钟" @click="$emit('snooze', activeInspectorReminder, 15)">+15分</button>
-            <button class="snooze-chip" title="推迟1小时" @click="$emit('snooze', activeInspectorReminder, 60)">+1小时</button>
-            <button class="snooze-chip" title="推迟至明天上午09:00" @click="snoozeToTomorrowMorning(activeInspectorReminder)">明早9点</button>
-            <button class="snooze-chip" title="推迟至下周一上午09:00" @click="snoozeToNextMonday(activeInspectorReminder)">下周一</button>
-          </div>
-
-          <!-- Conflict Alert & Auto-Deconflict (R47) -->
-          <div v-if="inspectorConflict.hasConflict" class="inspector-conflict-card">
-            <div class="conflict-head">
-              <span class="conflict-warning-badge">⚠️ 时间冲突</span>
-              <span class="conflict-msg">与「{{ inspectorConflict.conflicts[0]?.title }}」时段重叠</span>
-            </div>
-            <button
-              type="button"
-              class="auto-deconflict-btn"
-              @click="handleAutoDeconflict(activeInspectorReminder)"
-            >
-              一键顺延避冲 (建议 {{ inspectorConflict.suggestedTimeLabel }})
-            </button>
-          </div>
-        </div>
-
-        <!-- Subtasks Checklist Section -->
-        <div class="inspector-section">
-          <div class="inspector-subtasks-head">
-            <label class="inspector-field-label">
-              检查清单
-              <span v-if="viewModel(activeInspectorReminder).progress">
-                ({{ viewModel(activeInspectorReminder).progress?.done }}/{{ viewModel(activeInspectorReminder).progress?.total }})
-              </span>
-            </label>
-            <span v-if="viewModel(activeInspectorReminder).progress" class="inspector-subtask-pct">
-              {{ viewModel(activeInspectorReminder).progress?.pct }}%
-            </span>
-          </div>
-
-          <div class="inspector-checklist">
-            <div
-              v-for="(st, idx) in viewModel(activeInspectorReminder).subtasks"
-              :key="st.id"
-              class="inspector-check-row"
-              @click="handleToggleSubtaskItem(activeInspectorReminder, idx)"
-            >
-              <input
-                type="checkbox"
-                :checked="st.done"
-                class="st-check"
-                @click.stop="handleToggleSubtaskItem(activeInspectorReminder, idx)"
-              />
-              <span class="inspector-st-text" :class="{ done: st.done }">{{ st.title }}</span>
-              <div class="subtask-reorder-btns" @click.stop>
-                <button
-                  type="button"
-                  class="reorder-btn"
-                  title="上移"
-                  :disabled="idx === 0"
-                  @click="handleMoveSubtask(activeInspectorReminder, idx, -1)"
-                >▲</button>
-                <button
-                  type="button"
-                  class="reorder-btn"
-                  title="下移"
-                  :disabled="idx === viewModel(activeInspectorReminder).subtasks.length - 1"
-                  @click="handleMoveSubtask(activeInspectorReminder, idx, 1)"
-                >▼</button>
-              </div>
-              <button
-                class="inspector-st-del"
-                title="删除子项"
-                @click.stop="handleInspectorDeleteSubtask(activeInspectorReminder, idx)"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div class="inspector-add-subtask-row">
-              <input
-                v-model="inspectorSubtaskInput"
-                type="text"
-                class="inspector-add-subtask-input"
-                placeholder="+ 添加检查项按回车..."
-                @keydown.enter.stop="handleInspectorAddSubtask(activeInspectorReminder)"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- Tags Section -->
-        <div v-if="activeInspectorReminder.tags" class="inspector-section">
-          <label class="inspector-field-label">标签</label>
-          <div class="inspector-tags-cloud">
-            <span
-              v-for="tag in parseTags(activeInspectorReminder.tags, activeInspectorReminder)"
-              :key="tag"
-              class="tag-badge"
-              :style="{
-                backgroundColor: getTagColor(tag).bg,
-                color: getTagColor(tag).text,
-                borderColor: getTagColor(tag).border,
-              }"
-              @click="$emit('filter-tag', tag)"
-            >
-              #{{ tag }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Notes Section (R53: Interactive Checklist) -->
-        <div v-if="activeInspectorReminder.notes" class="inspector-section">
-          <label class="inspector-field-label">详细备注</label>
-          <div class="inspector-notes-box">
-            <template v-for="(line, lineIdx) in activeInspectorReminder.notes.split('\n')" :key="lineIdx">
-              <div
-                v-if="line.trim().startsWith('- [ ]') || line.trim().startsWith('- [x]') || line.trim().startsWith('- [X]')"
-                class="note-checklist-line"
-                @click="handleToggleNoteChecklist(activeInspectorReminder, lineIdx)"
-              >
-                <input
-                  type="checkbox"
-                  :checked="line.includes('- [x]') || line.includes('- [X]')"
-                  class="note-check-box"
-                  readonly
-                />
-                <span :class="{ 'line-done': line.includes('- [x]') || line.includes('- [X]') }">
-                  {{ line.replace(/- \[[ xX]\]/, '').trim() }}
-                </span>
-              </div>
-              <p v-else class="note-plain-line">{{ line }}</p>
-            </template>
-          </div>
-        </div>
-
-        <!-- Metadata Row -->
-        <div class="inspector-section inspector-meta-row">
-          <span v-if="activeInspectorReminder.lead_minutes > 0" class="chip chip-lead">
-            提前 {{ activeInspectorReminder.lead_minutes }} 分钟
-          </span>
-          <span class="chip chip-range">
-            时长 {{ activeInspectorReminder.duration_minutes || 30 }} 分钟
-          </span>
-          <span v-if="activeInspectorReminder.repeat_rule" class="chip chip-repeat">
-            {{ viewModel(activeInspectorReminder).repeatLabel }}
-          </span>
-        </div>
-      </div>
-
-      <!-- Inspector Footer Dock -->
-      <div class="inspector-footer-dock">
-        <button
-          v-if="activeInspectorReminder.status === 'active'"
-          class="inspector-action-btn focus"
-          title="开启 25 分钟番茄专注"
-          @click="$emit('start-focus', activeInspectorReminder)"
-        >
-          <span>⚡ 专注</span>
-        </button>
-        <button
-          v-if="activeInspectorReminder.status !== 'ended'"
-          class="inspector-action-btn"
-          :title="activeInspectorReminder.status === 'paused' ? '恢复提醒' : '暂停提醒'"
-          @click="$emit('toggle-pause', activeInspectorReminder)"
-        >
-          <span>{{ activeInspectorReminder.status === 'paused' ? '恢复' : '暂停' }}</span>
-        </button>
-        <button
-          class="inspector-action-btn primary"
-          title="完整编辑弹窗"
-          @click="$emit('edit', activeInspectorReminder)"
-        >
-          <span>✏️ 编辑</span>
-        </button>
-        <button
-          class="inspector-action-btn danger"
-          title="移至废纸篓"
-          @click="$emit('delete', activeInspectorReminder.id); activeInspectorReminder = null"
-        >
-          <span>🗑️ 删除</span>
-        </button>
-      </div>
-    </aside>
-  </div>
+    </div>
 
     <!-- Right-click Context Menu (Round 58) -->
-    <div
-      v-if="contextMenu.visible && contextMenu.reminder"
-      ref="contextMenuRef"
-      class="context-menu glass-panel"
-      role="menu"
-      aria-label="日程操作"
-      tabindex="-1"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-      @click.stop
-      @keydown="handleContextMenuKeydown"
-    >
+    <Teleport v-if="portalTargetReady" :to="portalTarget">
+      <div
+        v-if="contextMenu.visible && contextMenu.reminder"
+        ref="contextMenuRef"
+        class="context-menu glass-panel"
+        role="menu"
+        aria-label="日程操作"
+        tabindex="-1"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @click.stop
+        @keydown="handleContextMenuKeydown"
+      >
       <div class="context-menu-title">{{ contextMenu.reminder.title }}</div>
       <button class="ctx-item" role="menuitem" @click="emit('toggle-pin', contextMenu.reminder!.id); closeContextMenu(true)">
-        <span>{{ contextMenu.reminder!.is_pinned ? '★ 取消置顶' : '☆ 置顶日程' }}</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" :fill="contextMenu.reminder!.is_pinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+          <span>{{ contextMenu.reminder!.is_pinned ? '取消置顶' : '置顶日程' }}</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="emit('edit', contextMenu.reminder!); closeContextMenu(true)">
-        <span>✎ 编辑日程</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          <span>编辑日程</span>
+        </span>
+      </button>
+      <button class="ctx-item" role="menuitem" @click="copyReminderTitle(contextMenu.reminder!); closeContextMenu(true)">
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          <span>复制标题</span>
+        </span>
       </button>
       <div class="ctx-divider" role="separator"></div>
       <button class="ctx-item" role="menuitem" @click="handleQuickSnooze(contextMenu.reminder!, 15); closeContextMenu(true)">
-        <span>⏰ 顺延 15 分钟</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 7 12 12 15.5 14" />
+          </svg>
+          <span>顺延 15 分钟</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="handleQuickSnooze(contextMenu.reminder!, 60); closeContextMenu(true)">
-        <span>⏰ 顺延 1 小时</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 7 12 12 15.5 14" />
+          </svg>
+          <span>顺延 1 小时</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="snoozeToTomorrowMorning(contextMenu.reminder!); closeContextMenu(true)">
-        <span>🌅 顺延至明天 09:00</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M17 18a5 5 0 0 0-10 0" />
+            <line x1="12" y1="2" x2="12" y2="9" />
+            <line x1="4.22" y1="10.22" x2="5.64" y2="11.64" />
+            <line x1="1" y1="18" x2="3" y2="18" />
+            <line x1="21" y1="18" x2="23" y2="18" />
+            <line x1="18.36" y1="11.64" x2="19.78" y2="10.22" />
+            <line x1="23" y1="22" x2="1" y2="22" />
+          </svg>
+          <span>顺延至明天 09:00</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="snoozeToWeekend(contextMenu.reminder!); closeContextMenu(true)">
-        <span>🏖️ 顺延至本周末 (周六)</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="17" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <span>顺延至本周末 (周六)</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="snoozeToNextMonday(contextMenu.reminder!); closeContextMenu(true)">
-        <span>💼 顺延至下周一 09:00</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 14 4 9 9 4" />
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+          </svg>
+          <span>顺延至下周一 09:00</span>
+        </span>
       </button>
       <div class="ctx-divider" role="separator"></div>
-      <button v-if="contextMenu.reminder!.status !== 'ended'" class="ctx-item" role="menuitem" @click="emit('toggle-pause', contextMenu.reminder!); closeContextMenu(true)">
-        <span>{{ contextMenu.reminder!.status === 'paused' ? '恢复提醒' : '暂停提醒' }}</span>
+      <button v-if="contextMenu.reminder!.status === 'active' || contextMenu.reminder!.status === 'expired'" class="ctx-item" role="menuitem" @click="emit('start-focus', contextMenu.reminder!); closeContextMenu(true)">
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 7 12 12 15 14" />
+          </svg>
+          <span>开启 25 分钟番茄专注</span>
+        </span>
+      </button>
+      <button v-if="contextMenu.reminder!.status === 'active' || contextMenu.reminder!.status === 'paused'" class="ctx-item" role="menuitem" @click="emit('toggle-pause', contextMenu.reminder!); closeContextMenu(true)">
+        <span class="icon-inline">
+          <svg v-if="contextMenu.reminder!.status === 'paused'" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+          <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </svg>
+          <span>{{ contextMenu.reminder!.status === 'paused' ? '恢复提醒' : '暂停提醒' }}</span>
+        </span>
+      </button>
+      <button class="ctx-item" role="menuitem" @click="emit('view-history', contextMenu.reminder!); closeContextMenu(true)">
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>查看触发历史</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="emit('duplicate', contextMenu.reminder!); closeContextMenu(true)">
-        <span>⧉ 复刻排期至明日 (+1天)</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          <span>复刻排期至明日 (+1天)</span>
+        </span>
       </button>
       <button class="ctx-item" role="menuitem" @click="emit('duplicate-offset', contextMenu.reminder!, 7); closeContextMenu(true)">
-        <span>⧉ 克隆为下周同时间 (+7天)</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          <span>克隆为下周同时间 (+7天)</span>
+        </span>
       </button>
       <div class="ctx-divider" role="separator"></div>
       <button class="ctx-item danger" role="menuitem" @click="emit('delete', contextMenu.reminder!.id); closeContextMenu(true)">
-        <span>🗑 移入废纸篓</span>
+        <span class="icon-inline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+          <span>移入废纸篓</span>
+        </span>
       </button>
-    </div>
+      </div>
+    </Teleport>
+
+    <!-- Teleported Snooze Popover Menu -->
+    <Teleport v-if="portalTargetReady" :to="portalTarget">
+      <div
+        v-if="activeSnoozeMenuId && activeSnoozeReminder"
+        ref="snoozeMenuRef"
+        class="snooze-dropdown glass-panel"
+        :class="{ 'flip-up': snoozeFlipUp }"
+        role="menu"
+        aria-label="快捷推迟顺延"
+        :style="{ left: `${snoozeMenuPos.x}px`, top: `${snoozeMenuPos.y}px` }"
+        @click.stop
+      >
+        <div class="snooze-menu-head">智能推迟 / 顺延</div>
+        <button class="snooze-opt-btn" role="menuitem" @click="handleQuickSnooze(activeSnoozeReminder, 15)">+15 分钟</button>
+        <button class="snooze-opt-btn" role="menuitem" @click="handleQuickSnooze(activeSnoozeReminder, 30)">+30 分钟</button>
+        <button class="snooze-opt-btn" role="menuitem" @click="handleQuickSnooze(activeSnoozeReminder, 60)">+1 小时</button>
+        <button class="snooze-opt-btn" role="menuitem" @click="snoozeToTomorrowMorning(activeSnoozeReminder)">明早 09:00</button>
+        <button class="snooze-opt-btn" role="menuitem" @click="snoozeToWeekend(activeSnoozeReminder)">本周末 (周六)</button>
+        <button class="snooze-opt-btn" role="menuitem" @click="snoozeToNextMonday(activeSnoozeReminder)">下周一 09:00</button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.reminder-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.list-controls-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.total-count {
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.controls-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.sub-filters {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.sub-filter-pill {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--fill-subtle);
-  border: 1px solid var(--border-l1);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.16s ease;
-}
-
-.sub-filter-pill:hover {
-  background: var(--fill-hover);
-  color: var(--text-primary);
-}
-
-.sub-filter-pill.active {
-  background: var(--accent-soft);
-  border-color: var(--accent-border);
-  color: var(--accent-text);
-}
-
 .chip-subtask {
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .st-bar-fill {
@@ -1496,8 +1538,29 @@ function handleInlineAddSubtask(r: Reminder) {
   text-decoration: underline;
 }
 
-.focus-action-btn:hover {
-  color: var(--warning);
+.focus-action-btn:hover,
+.focus-action-btn.active {
+  color: var(--tide-text);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.chip-focus-live {
+  color: var(--tide-text) !important;
+  background: var(--accent-soft) !important;
+  border: 1px solid var(--accent-border) !important;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip-focus-live.running {
+  box-shadow: 0 0 10px -2px color-mix(in srgb, var(--tide) 48%, transparent);
+}
+
+.chip-focus-total {
+  color: var(--text-tertiary) !important;
+  background: var(--fill-subtle) !important;
+  border: 1px solid var(--border-subtle) !important;
 }
 
 :deep(mark.search-highlight) {
@@ -1576,551 +1639,36 @@ function handleInlineAddSubtask(r: Reminder) {
   border-color: var(--border-l2);
 }
 
-.reminder-list-layout {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  width: 100%;
-}
-
-.groups-wrap {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.group-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.group-header {
-  display: flex;
+.icon-inline {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 4px;
-  cursor: pointer;
-  user-select: none;
+  gap: 5px;
+}
+
+.icon-inline svg {
+  flex: none;
 }
 
 .group-collapse-arrow {
-  font-size: 10px;
+  display: inline-grid;
+  place-items: center;
   color: var(--text-muted);
-  width: 12px;
-  text-align: center;
-  transition: transform 0.16s ease;
+  width: 14px;
+  height: 14px;
+  transition: transform 0.16s ease, color 0.14s ease;
+}
+
+.group-collapse-arrow.expanded {
+  transform: rotate(90deg);
 }
 
 .group-header:hover .group-collapse-arrow {
   color: var(--brand-light);
 }
 
-.group-title {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--brand-light);
-  text-transform: uppercase;
-}
-
-.group-badge {
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 10px;
-  background: var(--accent-soft);
-  color: var(--brand-light);
-  font-weight: 600;
-}
-
-/* Side Inspector Panel (Things 3 / Linear caliber) */
-.task-inspector-panel {
-  width: 330px;
-  flex: none;
-  position: sticky;
-  top: 0;
-  max-height: calc(100vh - 140px);
-  display: flex;
-  flex-direction: column;
-  border-radius: 14px;
-  border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-sm);
-  animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-  background: var(--surface-raised);
-}
-
-@keyframes slideInRight {
-  from { opacity: 0; transform: translateX(18px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.inspector-header {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border-l1);
-  background: transparent;
-}
-
-.inspector-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.inspector-badge-pri {
-  font-size: 10.5px;
-  font-weight: 800;
-  padding: 3px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.14s ease;
-}
-
-.inspector-badge-pri.p0 {
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
-}
-.inspector-badge-pri.p1 {
-  background: color-mix(in srgb, var(--lime) 14%, transparent);
-  color: var(--lime-strong);
-  border-color: color-mix(in srgb, var(--lime) 38%, transparent);
-}
-.inspector-badge-pri.p2 {
-  background: color-mix(in srgb, var(--tide) 14%, transparent);
-  color: var(--tide-text);
-  border-color: color-mix(in srgb, var(--tide) 36%, transparent);
-}
-.inspector-badge-pri.p3 {
-  background: var(--fill-hover);
-  color: var(--text-secondary);
-  border-color: var(--border-subtle);
-}
-
-.inspector-badge-status {
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-  background: var(--fill-subtle);
-  border: 1px solid var(--border-l1);
-  color: var(--text-secondary);
-}
-
-.inspector-badge-status.ended {
-  background: color-mix(in srgb, var(--success) 13%, transparent);
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 34%, transparent);
-}
-
-.inspector-badge-status.paused {
-  background: color-mix(in srgb, var(--warning) 13%, transparent);
-  color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 34%, transparent);
-}
-
-.inspector-close-btn {
-  font-size: 13px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.inspector-body {
-  padding: 14px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.inspector-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.inspector-field-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.inspector-title-input {
-  background: var(--input-bg);
-  border: 1px solid var(--border-l1);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-  outline: none;
-  transition: all 0.14s ease;
-}
-
-.inspector-title-input:focus {
-  border-color: var(--brand-primary);
-  background: var(--fill-hover);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.inspector-time-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  background: var(--fill-subtle);
-  border-radius: 8px;
-  border: 1px solid var(--border-l1);
-}
-
-.inspector-time-str {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.inspector-snooze-chips {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.snooze-chip {
-  flex: 1;
-  padding: 4px 0;
-  border-radius: 999px;
-  background: var(--fill-subtle);
-  border: 1px solid var(--border-l1);
-  color: var(--text-secondary);
-  font-size: 10.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.snooze-chip:hover {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  border-color: var(--accent-border);
-}
-
-.inspector-checklist {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background: var(--fill-subtle);
-  border: 1px solid var(--border-l1);
-  border-radius: 8px;
-  padding: 6px 8px;
-}
-
-.inspector-check-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.inspector-check-row:hover {
-  background: var(--fill-hover);
-}
-
-.inspector-st-text {
-  flex: 1;
-  font-size: 12px;
-  color: var(--text-primary);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.inspector-st-text.done {
-  text-decoration: line-through;
-  color: var(--text-muted);
-}
-
-.inspector-st-del {
-  background: transparent;
-  border: 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 11px;
-  opacity: 0;
-  transition: opacity 0.14s ease;
-}
-
-.inspector-check-row:hover .inspector-st-del {
-  opacity: 0.8;
-}
-
-.inspector-st-del:hover {
-  color: var(--danger);
-}
-
-.inspector-add-subtask-input {
-  width: 100%;
-  background: transparent;
-  border: 0;
-  border-top: 1px dashed var(--border-subtle);
-  padding: 6px 4px 2px 4px;
-  font-size: 11.5px;
-  color: var(--text-primary);
-  outline: none;
-}
-
-.inspector-notes-box {
-  padding: 8px 10px;
-  background: var(--fill-subtle);
-  border: 1px solid var(--border-l1);
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  word-break: break-word;
-  max-height: 140px;
-  overflow-y: auto;
-}
-
-.note-checklist-line {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.note-checklist-line:hover {
-  background: var(--fill-hover);
-}
-
-.note-check-box {
-  pointer-events: none;
-}
-
-.note-checklist-line .line-done {
-  text-decoration: line-through;
-  color: var(--text-muted);
-}
-
-.note-plain-line {
-  margin: 0;
-  padding: 1px 4px;
-}
-
-.subtask-reorder-btns {
-  display: flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.14s ease;
-}
-
-.inspector-check-row:hover .subtask-reorder-btns {
-  opacity: 1;
-}
-
-.reorder-btn {
-  background: transparent;
-  border: none;
-  font-size: 8.5px;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  padding: 1px 3px;
-  border-radius: 3px;
-}
-
-.reorder-btn:hover:not(:disabled) {
-  background: var(--fill-hover);
-  color: var(--text-primary);
-}
-
-.reorder-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.inspector-conflict-card {
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.conflict-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.conflict-warning-badge {
-  font-size: 10px;
-  font-weight: 750;
-  color: var(--danger);
-}
-
-.conflict-msg {
-  font-size: 11px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.auto-deconflict-btn {
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  background: var(--danger);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  transition: opacity 0.14s ease;
-}
-
-.auto-deconflict-btn:hover {
-  opacity: 0.88;
-}
-
-.inspector-footer-dock {
-  padding: 10px 14px;
-  display: flex;
-  gap: 8px;
-  border-top: 1px solid var(--border-l1);
-  background: transparent;
-}
-
-.inspector-action-btn {
-  flex: 1;
-  height: 32px;
-  border-radius: 999px;
-  border: 1px solid var(--border-l1);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.14s ease;
-}
-
-.inspector-action-btn.focus {
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
-  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
-  color: var(--warning);
-}
-
-.inspector-action-btn.primary {
-  background: var(--accent-soft);
-  border-color: var(--accent-border);
-  color: var(--accent-text);
-}
-
-.inspector-action-btn.danger {
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
-  color: var(--danger);
-}
-
-.inspector-action-btn:hover {
-  background: var(--fill-hover);
-  transform: translateY(-1px);
-}
-
-.group-cards {
-  border-radius: 14px;
-  overflow: visible;
-  padding: 4px;
-}
-
-.task-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
-  position: relative;
-  contain: layout style;
-}
-
-.task-row:hover {
-  background: var(--fill-hover);
-}
-
-.task-row.active-focus {
-  border-color: var(--accent-border);
-  background: var(--fill-active);
-}
-
-.task-row.selected {
-  background: var(--fill-active);
-}
-
-.task-row.near {
-  border-left: 3px solid var(--state-warning);
-}
-
-.task-row.paused {
-  opacity: 0.65;
-}
-
-.task-row.ended {
-  opacity: 0.55;
-}
-
 .task-row.ended .task-title {
   text-decoration: line-through;
   color: var(--text-muted);
-}
-
-.task-complete-btn {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-l2);
-  background: transparent;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-on-success);
-  flex: none;
-  transition: all 0.16s ease;
-}
-
-.task-complete-btn:hover {
-  border-color: var(--state-success);
-  background: color-mix(in srgb, var(--state-success) 15%, transparent);
-}
-
-.task-complete-btn.completed {
-  background: var(--state-success);
-  border-color: var(--state-success);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--state-success) 40%, transparent);
 }
 
 .inline-title-input {
@@ -2159,165 +1707,101 @@ function handleInlineAddSubtask(r: Reminder) {
   background: var(--fill-hover);
 }
 
-.task-check {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  border: 1.5px solid var(--border-l2);
-  background: transparent;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-on-accent);
-  flex: none;
-  transition: all 0.14s ease;
+.pill-count {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 9.5px;
+  opacity: 0.72;
 }
 
-.task-check:hover {
-  border-color: var(--brand-primary);
+.reset-pill {
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
-.task-check.checked {
-  background: var(--brand-primary);
-  border-color: var(--brand-primary);
+.overdue-pill.active {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
-.time-col {
-  width: 64px;
-  display: flex;
-  flex-direction: column;
+.collapse-all-btn {
   flex: none;
 }
 
-.time-text {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
+.group-meta-pill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--fill-subtle);
+  color: var(--text-tertiary);
+  font: 600 10px var(--font-mono);
 }
 
-.date-badge {
-  font-size: 10.5px;
-  color: var(--text-muted);
+.group-meta-pill.overdue {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
 }
 
-.main-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+.group-meta-pill.done {
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
+  background: color-mix(in srgb, var(--success) 9%, transparent);
+  color: var(--success);
 }
 
-.title-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.time-end {
+  color: var(--text-quaternary);
+  font: 600 9.5px/1.15 var(--font-mono);
 }
 
-.task-title {
-  font-size: 14px;
+.time-text.overdue {
+  color: var(--danger);
+}
+
+.tag-overflow-badge {
+  background: var(--fill-subtle);
+  color: var(--text-tertiary);
+  border-color: var(--border-subtle);
+}
+
+.chip-inline-time {
+  display: none;
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+}
+
+.chip-inline-time.overdue {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.st-check {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
   cursor: pointer;
+  flex: none;
+}
+
+.st-text {
+  line-height: 1.4;
   transition: color 0.14s ease;
 }
 
-.task-title:hover {
-  color: var(--brand-light);
-}
-
-/* Priority Badges (Round 5) */
-.badge-priority {
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 4px;
-  flex: none;
-}
-
-.badge-priority.p0 {
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
-  color: var(--danger);
-  border: 1px solid color-mix(in srgb, var(--danger) 36%, transparent);
-}
-
-.badge-priority.p1 {
-  background: color-mix(in srgb, var(--lime) 14%, transparent);
-  color: var(--lime-strong);
-  border: 1px solid color-mix(in srgb, var(--lime) 36%, transparent);
-}
-
-.badge-priority.p3 {
-  background: var(--fill-subtle);
-  color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
-}
-
-/* Tag Badges */
-.tag-badge {
-  font-size: 10.5px;
-  color: var(--accent-text);
-  background: var(--accent-soft);
-  padding: 1px 6px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.14s ease;
-}
-
-.tag-badge:hover {
-  background: var(--accent-border);
-  color: var(--text-primary);
-}
-
-.chips-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.chip-subtask {
-  background: color-mix(in srgb, var(--success) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--success) 32%, transparent);
-  color: var(--success);
-  cursor: pointer;
-  padding: 2px 7px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  transition: all 0.14s ease;
-}
-
-.chip-subtask:hover,
-.chip-subtask.expanded {
-  background: color-mix(in srgb, var(--success) 22%, transparent);
-  color: var(--text-primary);
-}
-
-.inline-subtasks-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--fill-subtle);
-  border-radius: 6px;
-  border-left: 2px solid var(--tide);
-}
-
 .inline-subtask-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
   cursor: pointer;
-  color: var(--text-secondary);
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .inline-subtask-item:hover {
   color: var(--text-primary);
+  background: var(--fill-hover);
 }
 
 .st-text.done {
@@ -2332,23 +1816,6 @@ function handleInlineAddSubtask(r: Reminder) {
 /* Quick Snooze Popover Menu */
 .snooze-action-wrap {
   position: relative;
-}
-
-.snooze-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 6px;
-  background: var(--surface-overlay);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  z-index: 50;
-  width: 120px;
-  box-shadow: var(--shadow-lg);
 }
 
 .snooze-menu-head {
@@ -2373,40 +1840,6 @@ function handleInlineAddSubtask(r: Reminder) {
 .snooze-opt-btn:hover {
   background: var(--fill-hover);
   color: var(--text-primary);
-}
-
-/* Star Pin Button */
-.pin-star-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-quaternary);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  transition: all 0.15s;
-}
-
-.pin-star-btn:hover,
-.pin-star-btn.active {
-  color: var(--warning);
-  transform: scale(1.15);
-}
-
-.task-row.is-pinned {
-  border-left: 2.5px solid var(--warning) !important;
-  background: color-mix(in srgb, var(--warning) 6%, transparent);
-}
-
-.badge-pinned {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 14%, transparent);
-  color: var(--warning);
-  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-  margin-right: 4px;
 }
 
 .chip-urgent {
@@ -2436,7 +1869,7 @@ function handleInlineAddSubtask(r: Reminder) {
 /* Right-click Context Menu */
 .context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: calc(var(--z-overlay) + 5);
   background: var(--surface-overlay);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-strong);
@@ -2445,7 +1878,9 @@ function handleInlineAddSubtask(r: Reminder) {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 170px;
+  min-width: 184px;
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
   box-shadow: var(--shadow-lg);
   animation: fade-in 0.12s ease;
 }

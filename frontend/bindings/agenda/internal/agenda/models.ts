@@ -20,6 +20,17 @@ export interface AIConfig {
     "model": string;
 }
 
+/**
+ * AutoStartInfo describes native login autostart registration state.
+ */
+export interface AutoStartInfo {
+    "enabled": boolean;
+    "strategy": string;
+    "path": string;
+    "supported": boolean;
+    "error": string;
+}
+
 export interface CreateReminderRequest {
     "title": string;
     "scheduled_at": string;
@@ -44,11 +55,102 @@ export interface DeliveryRecord {
     "error": string;
 }
 
+/**
+ * DesktopManager coordinates multi-window lifecycle, native system tray, global shortcuts,
+ * login autostart, and cross-window state synchronization.
+ */
+export interface DesktopManager {
+}
+
+/**
+ * DesktopPreferences persists multi-window, system tray, and background daemon preferences in SQLite.
+ */
+export interface DesktopPreferences {
+    "close_to_tray": boolean;
+    "start_minimized": boolean;
+    "show_tray_count": boolean;
+
+    /**
+     * "popover" | "main" | "menu"
+     */
+    "tray_click_action": string;
+
+    /**
+     * "quick-add" | "main"
+     */
+    "hotkey_target": string;
+    "quick_add_hotkey": string;
+    "tray_popover_hotkey": string;
+    "focus_hotkey": string;
+    "quick_add_auto_hide": boolean;
+    "scheduler_paused": boolean;
+    "dnd_enabled": boolean;
+
+    /**
+     * "HH:MM"
+     */
+    "dnd_start": string;
+
+    /**
+     * "HH:MM"
+     */
+    "dnd_end": string;
+    "dnd_allow_p0": boolean;
+    "morning_briefing_enabled": boolean;
+
+    /**
+     * "HH:MM"
+     */
+    "morning_briefing_time": string;
+}
+
+/**
+ * DesktopRuntimeStatus aggregates preferences, autostart, scheduler telemetry, and open windows.
+ */
+export interface DesktopRuntimeStatus {
+    "preferences": DesktopPreferences;
+    "autostart": AutoStartInfo;
+    "scheduler": SchedulerStatus;
+    "windows": WindowSummary[] | null;
+    "focus": FocusTrayState;
+    "tray_supported": boolean;
+    "registered_shortcuts": string[] | null;
+    "hotkey_error": string;
+}
+
+/**
+ * FocusTrayState holds live Pomodoro timer telemetry synced from the active frontend window.
+ */
+export interface FocusTrayState {
+    "running": boolean;
+
+    /**
+     * "focus" | "shortBreak" | "longBreak"
+     */
+    "mode": string;
+
+    /**
+     * "24:59"
+     */
+    "clock": string;
+    "title": string;
+}
+
 export interface PolishResult {
     "title": string;
     "notes": string;
     "tags": string[] | null;
     "subtasks": string[] | null;
+}
+
+export interface RecentDeliveryItem {
+    "id": string;
+    "reminder_id": string;
+    "reminder_title": string;
+    "delivered_at": string;
+    "prompt": string;
+    "status": string;
+    "error": string;
 }
 
 export interface Reminder {
@@ -63,7 +165,7 @@ export interface Reminder {
     "prompt": string;
 
     /**
-     * "active", "paused", "ended"
+     * "active", "paused", "ended", "expired"
      */
     "status": string;
 
@@ -87,6 +189,30 @@ export interface Reminder {
     "updated_at": string;
 }
 
+export interface Scheduler {
+}
+
+export interface SchedulerStatus {
+    "running": boolean;
+    "paused": boolean;
+    "paused_until": string;
+    "paused_remaining_sec": number;
+    "started_at": string;
+    "uptime_seconds": number;
+    "last_check_at": string;
+    "check_interval_sec": number;
+    "checks_count": number;
+    "notifications_sent": number;
+    "next_reminder_id": string;
+    "next_reminder_title": string;
+    "next_reminder_at": string;
+    "next_reminder_in_sec": number;
+    "last_maintenance_at": string;
+    "today_count": number;
+    "overdue_count": number;
+    "dnd_active": boolean;
+}
+
 export interface Stats {
     "total_reminders": number;
     "active_reminders": number;
@@ -94,6 +220,7 @@ export interface Stats {
     "near_due_reminders": number;
     "paused_reminders": number;
     "ended_reminders": number;
+    "expired_reminders": number;
     "total_delivered": number;
 }
 
@@ -112,4 +239,16 @@ export interface UpdateReminderRequest {
     "tags": string;
     "subtasks": string;
     "is_pinned": boolean;
+}
+
+/**
+ * WindowSummary describes an active Wails window managed by DesktopManager.
+ */
+export interface WindowSummary {
+    "name": string;
+    "title": string;
+    "kind": string;
+    "visible": boolean;
+    "always_on_top": boolean;
+    "focused": boolean;
 }

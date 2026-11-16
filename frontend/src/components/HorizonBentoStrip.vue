@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import type { Reminder } from '../../bindings/agenda/internal/agenda/models';
 import { formatTime } from '../utils/format';
+import { getApproxSolarTerm, getChineseShichen, getSeasonalAtmosphere, getSolarTermOnDate } from '../utils/shanshui';
 import { handlePointerGlow, resetPointerGlow } from '../utils/pointerGlow';
 
 const props = defineProps<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   (e: 'select-date', dateStr: string | null): void;
   (e: 'select-filter', filter: string): void;
   (e: 'open-reminder', reminder: Reminder): void;
+  (e: 'open-solar-terms'): void;
 }>();
 
 interface HorizonDay {
@@ -24,6 +26,7 @@ interface HorizonDay {
   dayNum: number;
   isToday: boolean;
   count: number;
+  solarTerm: string;
 }
 
 const days = computed<HorizonDay[]>(() => {
@@ -39,10 +42,11 @@ const days = computed<HorizonDay[]>(() => {
     const isToday = offset === 0;
     result.push({
       key,
-      weekDay: isToday ? '今日' : `周${weekDays[d.getDay()]}`,
+      weekDay: isToday ? '今日' : (offset === -1 ? '昨日' : `周${weekDays[d.getDay()]}`),
       dayNum: d.getDate(),
       isToday,
       count: props.dayCounts[key] || 0,
+      solarTerm: getSolarTermOnDate(d)?.name || '',
     });
   }
   return result;
@@ -54,7 +58,9 @@ const todayStats = computed(() => {
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   let total = 0;
   let ended = 0;
+  let overdue = 0;
   let activeAll = 0;
+  const nowMs = localTick.value;
 
   for (const r of props.reminders) {
     if (r.status === 'active') activeAll++;
@@ -64,12 +70,13 @@ const todayStats = computed(() => {
     if (key === todayKey) {
       total++;
       if (r.status === 'ended') ended++;
+      else if (r.status === 'expired' || (r.status === 'active' && d.getTime() < nowMs)) overdue++;
     }
   }
 
   const pct = total > 0 ? Math.round((ended / total) * 100) : (activeAll === 0 ? 100 : 0);
   const filledSegments = Math.round((pct / 100) * 10);
-  return { total, ended, activeAll, pct, filledSegments };
+  return { total, ended, overdue, activeAll, pct, filledSegments };
 });
 
 const localTick = ref(Date.now());
@@ -110,10 +117,10 @@ const nextUpcoming = computed(() => {
   let bestOverdueTime = -Infinity;
 
   for (const r of props.reminders) {
-    if (r.status !== 'active') continue;
+    if (r.status !== 'active' && r.status !== 'expired') continue;
     const t = new Date(r.scheduled_at).getTime();
     if (Number.isNaN(t)) continue;
-    if (t >= nowMs - 60000) {
+    if (r.status === 'active' && t >= nowMs - 60000) {
       if (t < bestFutureTime) {
         bestFutureTime = t;
         bestFuture = r;
@@ -172,6 +179,31 @@ const nextUpcoming = computed(() => {
 function toggleDay(key: string) {
   emit('select-date', props.selectedDate === key ? null : key);
 }
+
+function handleCarouselKeydown(event: KeyboardEvent, index: number) {
+  const navKeys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+  if (!navKeys.includes(event.key)) return;
+  const container = (event.currentTarget as HTMLElement | null)?.parentElement;
+  const pills = Array.from(container?.querySelectorAll<HTMLButtonElement>('.horizon-day-pill') || []);
+  if (!pills.length) return;
+  event.preventDefault();
+  let targetIndex = index;
+  if (event.key === 'ArrowLeft') targetIndex = (index - 1 + pills.length) % pills.length;
+  else if (event.key === 'ArrowRight') targetIndex = (index + 1) % pills.length;
+  else if (event.key === 'Home') targetIndex = 0;
+  else if (event.key === 'End') targetIndex = pills.length - 1;
+  pills[targetIndex]?.focus();
+}
+
+const shanshuiMoment = computed(() => {
+  props.nowTick;
+  const now = new Date();
+  return {
+    shichen: getChineseShichen(now),
+    solar: getApproxSolarTerm(now),
+    seasonal: getSeasonalAtmosphere(now),
+  };
+});
 </script>
 
 <template>
@@ -187,13 +219,27 @@ function toggleDay(key: string) {
       @click="$emit('select-filter', activeFilter === 'today' ? 'all' : 'today')"
     >
       <div class="hero-copy">
-        <span class="mono-kicker">01 · TODAY RHYTHM</span>
+        <span class="mono-kicker">
+          <span>01 · TODAY RHYTHM</span>
+          <span
+            class="kicker-shanshui"
+            role="button"
+            tabindex="0"
+            :title="`${shanshuiMoment.solar.verse} · ${shanshuiMoment.shichen.poeticHint} · ${shanshuiMoment.seasonal.auraLabel}（点击打开廿四节气与四季图鉴）`"
+            @click.stop="$emit('open-solar-terms')"
+            @keydown.enter.stop.prevent="$emit('open-solar-terms')"
+          >
+            <span class="kicker-chip">{{ shanshuiMoment.solar.season }}令·{{ shanshuiMoment.solar.name }}</span>
+            <span class="kicker-chip">{{ shanshuiMoment.shichen.branch }}时</span>
+          </span>
+        </span>
         <div class="hero-metric-row">
           <strong class="hero-pct tabular-nums">{{ todayStats.pct }}<small>%</small></strong>
           <span class="hero-sub tabular-nums">
             <template v-if="todayStats.total > 0">{{ todayStats.ended }}/{{ todayStats.total }} 已完结</template>
             <template v-else>{{ todayStats.activeAll }} 项待推进</template>
           </span>
+          <span v-if="todayStats.overdue > 0" class="hero-overdue-pill tabular-nums">逾期 {{ todayStats.overdue }}</span>
         </div>
       </div>
 
@@ -222,15 +268,20 @@ function toggleDay(key: string) {
       @pointerleave="resetPointerGlow"
     >
       <button
-        v-for="d in days"
+        v-for="(d, idx) in days"
         :key="d.key"
         type="button"
         class="horizon-day-pill"
-        :class="{ active: selectedDate === d.key, today: d.isToday }"
-        :title="`${d.key} · ${d.count} 项日程`"
+        :class="{ active: selectedDate === d.key, today: d.isToday, 'has-solar': Boolean(d.solarTerm) }"
+        :title="`${d.key}${d.solarTerm ? ` · 节气：${d.solarTerm}` : ''} · ${d.count} 项日程`"
+        :aria-pressed="selectedDate === d.key"
         @click="toggleDay(d.key)"
+        @keydown="handleCarouselKeydown($event, idx)"
       >
-        <span class="pill-weekday">{{ d.weekDay }}</span>
+        <span class="pill-weekday-row">
+          <span class="pill-weekday">{{ d.weekDay }}</span>
+          <span v-if="d.solarTerm" class="pill-solar-badge">{{ d.solarTerm }}</span>
+        </span>
         <span class="pill-day-circle tabular-nums">{{ d.dayNum }}</span>
         <span v-if="d.count > 0" class="pill-load-dot tabular-nums">{{ d.count }}</span>
         <span v-else class="pill-empty-tick" aria-hidden="true"></span>
@@ -321,7 +372,7 @@ function toggleDay(key: string) {
     radial-gradient(200px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--lime, #d9ff54) 11%, transparent), transparent 72%),
     radial-gradient(circle at 92% 15%, color-mix(in srgb, var(--lime, #d9ff54) 16%, transparent), transparent 58%),
     linear-gradient(155deg, color-mix(in oklab, var(--surface-raised) 92%, var(--lime, #d9ff54) 8%), var(--surface));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 var(--highlight-edge);
 }
 
 .bento-hero-rhythm:hover {
@@ -346,6 +397,7 @@ function toggleDay(key: string) {
 .mono-kicker {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
   font-family: var(--font-mono);
   font-size: 8.5px;
@@ -353,6 +405,19 @@ function toggleDay(key: string) {
   letter-spacing: 0.14em;
   color: var(--text-quaternary);
   text-transform: uppercase;
+}
+.kicker-shanshui {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--tide-text);
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+
+.kicker-chip {
+  white-space: nowrap;
 }
 
 .hero-metric-row {
@@ -383,6 +448,16 @@ function toggleDay(key: string) {
   white-space: nowrap;
 }
 
+.hero-overdue-pill {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font: 700 9px/1.3 var(--font-mono);
+  white-space: nowrap;
+}
+
 .segmented-arc-gauge {
   width: 58px;
   height: 38px;
@@ -407,7 +482,7 @@ function toggleDay(key: string) {
   background:
     radial-gradient(220px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--tide, #46b7ff) 11%, transparent), transparent 72%),
     var(--surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 var(--highlight-edge);
 }
 
 .horizon-day-pill {
@@ -430,11 +505,36 @@ function toggleDay(key: string) {
   border-color: var(--border-subtle);
 }
 
+.pill-weekday-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .pill-weekday {
   font-size: 9px;
   font-weight: 600;
   color: var(--text-quaternary);
   line-height: 1;
+}
+
+.pill-solar-badge {
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--seal-red, #e05246);
+  background: color-mix(in srgb, var(--seal-red, #e05246) 14%, transparent);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.horizon-day-pill.active .pill-solar-badge {
+  color: var(--ink-on-lime, #07080a);
+  background: color-mix(in srgb, var(--ink-on-lime, #07080a) 16%, transparent);
 }
 
 .pill-day-circle {
@@ -471,7 +571,7 @@ function toggleDay(key: string) {
 }
 
 .horizon-day-pill.active .pill-day-circle {
-  background: rgba(7, 8, 10, 0.14);
+  background: color-mix(in srgb, var(--ink-on-lime, #07080a) 15%, transparent);
   color: var(--ink-on-lime, #07080a);
   box-shadow: none;
 }
@@ -491,7 +591,7 @@ function toggleDay(key: string) {
 }
 
 .horizon-day-pill.active .pill-load-dot {
-  background: rgba(7, 8, 10, 0.85);
+  background: var(--ink-on-lime, #07080a);
   color: var(--lime, #d9ff54);
 }
 
@@ -503,10 +603,10 @@ function toggleDay(key: string) {
   background: var(--border-strong);
 }
 
-/* Tile 3: Cyberpunk / Telemetry Next Up Signal Card */
+/* Tile 3: Telemetry / Seal Next Up Signal Card */
 .bento-next-signal {
-  --signal-color: #f97316;
-  --signal-text: #fdba74;
+  --signal-color: var(--vermilion, #f97316);
+  --signal-text: var(--vermilion-text, #fdba74);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -515,14 +615,19 @@ function toggleDay(key: string) {
   padding: 11px 15px;
   background:
     radial-gradient(220px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--signal-color) 14%, transparent), transparent 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%),
-    rgba(18, 21, 28, 0.94);
+    linear-gradient(180deg, var(--highlight-edge) 0%, transparent 100%),
+    var(--surface-raised);
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
   cursor: pointer;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-xs), inset 0 1px 0 var(--highlight-edge);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global([data-theme^="shanshui-"]) .bento-next-signal {
+  --signal-color: var(--seal-red, #e05246);
+  --signal-text: var(--seal-red, #e05246);
 }
 
 .bento-next-signal::before {
@@ -533,8 +638,9 @@ function toggleDay(key: string) {
   font-size: 11px;
   line-height: 1;
   font-weight: 300;
-  color: rgba(255, 255, 255, 0.2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-quaternary);
+  opacity: 0.55;
+  font-family: var(--font-mono);
   pointer-events: none;
 }
 
@@ -542,18 +648,6 @@ function toggleDay(key: string) {
   --signal-color: var(--danger);
   --signal-text: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 45%, var(--border-subtle));
-}
-
-:global([data-theme="daylight"]) .bento-next-signal {
-  --signal-color: #ea580c;
-  --signal-text: #c2410c;
-  background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.09);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-
-:global([data-theme="daylight"]) .bento-next-signal::before {
-  color: rgba(0, 0, 0, 0.2);
 }
 
 .bento-next-signal:disabled {
@@ -566,7 +660,7 @@ function toggleDay(key: string) {
 .bento-next-signal:not(:disabled):hover {
   border-color: color-mix(in srgb, var(--signal-color) 52%, var(--border-strong));
   transform: translateY(-1.5px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36), 0 0 16px color-mix(in srgb, var(--signal-color) 18%, transparent);
+  box-shadow: var(--shadow-sm), 0 0 16px color-mix(in srgb, var(--signal-color) 18%, transparent);
 }
 
 .signal-top-row {
@@ -582,11 +676,11 @@ function toggleDay(key: string) {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.22em;
-  color: #8c93a0;
+  color: var(--text-tertiary);
   text-transform: uppercase;
 }
 
@@ -620,17 +714,47 @@ function toggleDay(key: string) {
   font-size: 11.5px;
   font-weight: 700;
   line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
   padding: 3.5px 10px;
   border-radius: 9999px;
-  background: #251b14;
+  background: color-mix(in srgb, var(--signal-color) 14%, var(--surface));
   color: var(--signal-text);
-  border: 1px solid color-mix(in srgb, var(--signal-color) 26%, transparent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  border: 1px solid color-mix(in srgb, var(--signal-color) 28%, transparent);
+  box-shadow: var(--shadow-xs);
 }
 
-:global([data-theme="daylight"]) .next-badge {
-  background: rgba(234, 88, 12, 0.1);
-  border-color: rgba(234, 88, 12, 0.2);
+.next-badge.urgent {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface));
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+}
+
+.bento-next-signal:disabled .signal-led {
+  animation: none;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+:global([data-color-scheme="light"]) .bento-next-signal {
+  background:
+    radial-gradient(220px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--signal-color) 10%, transparent), transparent 72%),
+    linear-gradient(180deg, var(--highlight-edge) 0%, var(--surface) 100%);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-xs), inset 0 1px 0 var(--highlight-edge);
+}
+
+:global([data-color-scheme="light"]) .next-badge {
+  background: color-mix(in srgb, var(--signal-color) 11%, var(--surface-raised));
+  color: var(--signal-text);
+  border-color: color-mix(in srgb, var(--signal-color) 30%, transparent);
+  box-shadow: none;
+}
+
+:global([data-color-scheme="light"]) .next-badge.urgent,
+:global([data-color-scheme="light"]) .bento-next-signal.overdue .next-badge {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface-raised));
+  color: var(--danger);
 }
 
 .signal-body {
@@ -654,24 +778,16 @@ function toggleDay(key: string) {
 .next-time {
   font-size: 15.5px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   letter-spacing: -0.01em;
   flex: none;
-}
-
-:global([data-theme="daylight"]) .next-time {
-  color: #0f172a;
 }
 
 .next-dot {
   font-size: 15px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-quaternary);
   flex: none;
-}
-
-:global([data-theme="daylight"]) .next-dot {
-  color: rgba(15, 23, 42, 0.45);
 }
 
 .next-title {
@@ -682,12 +798,8 @@ function toggleDay(key: string) {
   white-space: nowrap;
   font-size: 14.5px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   line-height: 1.3;
-}
-
-:global([data-theme="daylight"]) .next-title {
-  color: #1e293b;
 }
 
 .next-empty-label {
@@ -715,19 +827,19 @@ function toggleDay(key: string) {
   font-size: 10px;
   line-height: 1;
   font-weight: 300;
-  color: rgba(255, 255, 255, 0.25);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-quaternary);
+  opacity: 0.6;
+  font-family: var(--font-mono);
   pointer-events: none;
 }
 
-:global([data-theme="daylight"]) .reticle-corner-plus {
-  color: rgba(0, 0, 0, 0.25);
-}
-
-@media (max-width: 920px) {
+@media (max-width: 1060px) {
   .horizon-bento {
-    grid-template-columns: minmax(150px, 0.7fr) minmax(230px, 1.3fr) minmax(190px, 0.85fr);
+    grid-template-columns: minmax(144px, 0.7fr) minmax(218px, 1.3fr) minmax(188px, 1fr);
     gap: 6px;
+  }
+  .telemetry-wrapper {
+    display: none;
   }
 }
 
@@ -737,6 +849,13 @@ function toggleDay(key: string) {
     gap: 6px;
   }
   .bento-hero-rhythm {
+    display: none;
+  }
+  .horizon-day-pill {
+    min-width: 0;
+    padding: 3px 1px;
+  }
+  .pill-solar-badge {
     display: none;
   }
 }

@@ -7,14 +7,24 @@ import { escapeHTML } from './sanitize.ts';
 export function formatTime(isoString: string): string {
   if (!isoString) return '--:--';
   const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '--:--';
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
 }
 
+export function formatEndTime(iso: string, durationMinutes: number): string {
+  if (!durationMinutes || durationMinutes <= 0) return '';
+  const start = new Date(iso);
+  if (Number.isNaN(start.getTime())) return '';
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  return `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+}
+
 export function formatDateLabel(isoString: string): { label: string; subLabel: string; isToday: boolean; isTomorrow: boolean } {
   if (!isoString) return { label: '', subLabel: '', isToday: false, isTomorrow: false };
   const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return { label: '', subLabel: '', isToday: false, isTomorrow: false };
   const now = new Date();
 
   const dYear = d.getFullYear();
@@ -48,6 +58,7 @@ export function formatDateLabel(isoString: string): { label: string; subLabel: s
 export function formatRelativeTime(isoString: string): string {
   if (!isoString) return '';
   const target = new Date(isoString).getTime();
+  if (Number.isNaN(target)) return '';
   const now = Date.now();
   const diffSec = Math.round((target - now) / 1000);
 
@@ -72,6 +83,7 @@ export function formatRelativeTime(isoString: string): string {
 export function isNearDue(isoString: string, withinMinutes: number = 15): boolean {
   if (!isoString) return false;
   const target = new Date(isoString).getTime();
+  if (Number.isNaN(target)) return false;
   const now = Date.now();
   const diff = target - now;
   return diff >= 0 && diff <= withinMinutes * 60 * 1000;
@@ -82,34 +94,56 @@ export function formatRepeatLabel(rrule: string): string {
   const r = rrule.toUpperCase();
   const countMatch = r.match(/COUNT=(\d+)/);
   const countSuffix = countMatch ? ` (共${countMatch[1]}次)` : '';
+  const dayMap: Record<string, string> = {
+    MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日',
+  };
 
   if (r.includes('BYDAY=MO,TU,WE,TH,FR')) return `每个工作日${countSuffix}`;
   if (r.includes('BYDAY=SA,SU')) return `每周六日${countSuffix}`;
   if (r.includes('FREQ=DAILY')) {
     if (r.includes('INTERVAL=2')) return `每隔一天${countSuffix}`;
+    const ivMatch = r.match(/INTERVAL=(\d+)/);
+    if (ivMatch && Number(ivMatch[1]) > 2) return `每 ${ivMatch[1]} 天${countSuffix}`;
     if (countMatch) return `连续 ${countMatch[1]} 天`;
     return '每天';
   }
   if (r.includes('FREQ=WEEKLY')) {
-    if (r.includes('INTERVAL=2')) return `每两周${countSuffix}`;
+    const ivMatch = r.match(/INTERVAL=(\d+)/);
+    const iv = ivMatch ? Number(ivMatch[1]) : 1;
+    const prefix = iv === 2 ? '每两周' : iv > 2 ? `每 ${iv} 周` : '每周';
     const match = r.match(/BYDAY=([A-Z,]+)/);
     if (match) {
-      const dayMap: Record<string, string> = {
-        MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日',
-      };
       const days = match[1].split(',').map(d => dayMap[d] || d).join('、');
-      return `每周 ${days}${countSuffix}`;
+      return `${prefix} ${days}${countSuffix}`;
     }
-    return `每周${countSuffix}`;
+    return `${prefix}${countSuffix}`;
   }
   if (r.includes('FREQ=MONTHLY')) {
-    if (r.includes('BYDAY=-1FR')) return `每月最后一个周五${countSuffix}`;
+    if (r.includes('INTERVAL=3')) return `每季度${countSuffix}`;
+    const lastWdMatch = r.match(/BYDAY=-1([A-Z]{2})/);
+    if (lastWdMatch) {
+      return `每月最后一个${dayMap[lastWdMatch[1]] || lastWdMatch[1]}${countSuffix}`;
+    }
+    const nthWdMatch = r.match(/BYDAY=(\d+)([A-Z]{2})/);
+    if (nthWdMatch) {
+      return `每月第${nthWdMatch[1]}个${dayMap[nthWdMatch[2]] || nthWdMatch[2]}${countSuffix}`;
+    }
+    if (r.includes('BYMONTHDAY=-1')) return `每月最后一天${countSuffix}`;
     const match = r.match(/BYMONTHDAY=(\d+)/);
     if (match) return `每月 ${match[1]} 号${countSuffix}`;
     return `每月${countSuffix}`;
   }
   if (r.includes('FREQ=YEARLY')) return `每年${countSuffix}`;
   return `周期循环${countSuffix}`;
+}
+
+export function formatDurationLabel(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes || 0));
+  if (m === 0) return '0 分钟';
+  if (m < 60) return `${m} 分钟`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h} 小时 ${rem} 分` : `${h} 小时`;
 }
 
 /**
@@ -131,15 +165,31 @@ export function extractUrls(text: string): { url: string; label: string }[] {
 
 /**
  * Escapes HTML and wraps search query matches in <mark class="search-highlight">.
+ * Matches against raw text before escaping each segment so queries never corrupt HTML entities.
  */
 export function highlightMatch(text: string, query?: string): string {
-  const safeText = escapeHTML(text || '');
-  if (!query?.trim()) return safeText;
+  const raw = text || '';
+  const q = query?.trim() || '';
+  if (!q) return escapeHTML(raw);
 
-  const safeQuery = escapeHTML(query.trim());
-  const escapedQuery = safeQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escapedQuery})`, 'gi');
-  return safeText.replace(regex, '<mark class="search-highlight">$1</mark>');
+  const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(escapedQuery, 'gi');
+  let out = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(raw)) !== null) {
+    if (match[0].length === 0) break;
+    if (match.index > lastIndex) {
+      out += escapeHTML(raw.slice(lastIndex, match.index));
+    }
+    out += `<mark class="search-highlight">${escapeHTML(match[0])}</mark>`;
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < raw.length) {
+    out += escapeHTML(raw.slice(lastIndex));
+  }
+  return out;
 }
 
 /**
@@ -174,6 +224,7 @@ export function extractLocalPaths(text: string): { path: string; label: string }
 export function getCountdownBadge(isoString: string): { text: string; isUrgent: boolean; isPast: boolean; showBadge: boolean } {
   if (!isoString) return { text: '', isUrgent: false, isPast: false, showBadge: false };
   const target = new Date(isoString).getTime();
+  if (Number.isNaN(target)) return { text: '', isUrgent: false, isPast: false, showBadge: false };
   const now = Date.now();
   const diffSec = Math.round((target - now) / 1000);
 
@@ -200,4 +251,22 @@ export function getCountdownBadge(isoString: string): { text: string; isUrgent: 
   }
   const hours = Math.round(mins / 60);
   return { text: `${hours}h后`, isUrgent: false, isPast: false, showBadge: true };
+}
+
+/**
+ * 清理备注中的常见 Markdown 语法与待办复选框标记，生成紧凑的单行预览文本
+ */
+export function formatNotePreview(notes?: string): string {
+  if (!notes) return '';
+  return notes
+    .replace(/^\s*[-*+]\s+\[[ xX]\]\s*/gm, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/(`+)([^`]+)\1/g, '$2')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

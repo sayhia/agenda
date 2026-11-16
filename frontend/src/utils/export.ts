@@ -12,6 +12,7 @@ export function exportToMarkdown(reminders: Reminder[]): string {
   md += `> 导出时间：${now.toLocaleString('zh-CN')} · 共 ${reminders.length} 项日程\n\n`;
 
   const active = reminders.filter((r) => r.status === 'active');
+  const expired = reminders.filter((r) => r.status === 'expired');
   const paused = reminders.filter((r) => r.status === 'paused');
   const ended = reminders.filter((r) => r.status === 'ended');
 
@@ -23,11 +24,13 @@ export function exportToMarkdown(reminders: Reminder[]): string {
       const d = formatDateLabel(r.scheduled_at);
       const t = formatTime(r.scheduled_at);
       const pri = r.priority ? ` \`[${r.priority.toUpperCase()}]\`` : '';
-      const tags = r.tags ? ` #${r.tags.split(',').join(' #')}` : '';
+      const tags = r.tags ? ` #${r.tags.split(',').map((s) => s.trim()).filter(Boolean).join(' #')}` : '';
       const rep = r.repeat_rule ? ` (🔄 ${formatRepeatLabel(r.repeat_rule)})` : '';
-      md += `- [ ] **${t}** (${d.label}) **${r.title}**${pri}${rep}${tags}\n`;
+      const pinPrefix = r.is_pinned ? '📌 ' : '';
+      md += `- [ ] **${t}** (${d.label}) ${pinPrefix}**${r.title}**${pri}${rep}${tags}\n`;
       if (r.notes) {
-        md += `  > 备注: ${r.notes}\n`;
+        const noteLines = r.notes.split(/\r?\n/).map((line, i) => (i === 0 ? `  > 备注: ${line}` : `  > ${line}`));
+        md += `${noteLines.join('\n')}\n`;
       }
       if (r.subtasks) {
         try {
@@ -37,6 +40,14 @@ export function exportToMarkdown(reminders: Reminder[]): string {
           }
         } catch {}
       }
+    }
+    md += `\n`;
+  }
+
+  if (expired.length > 0) {
+    md += `## ⏰ 已过期 (${expired.length})\n\n`;
+    for (const r of expired) {
+      md += `- [ ] **${r.title}** (${formatDateLabel(r.scheduled_at).label} ${formatTime(r.scheduled_at)} · 已过期)\n`;
     }
     md += `\n`;
   }
@@ -64,7 +75,7 @@ export function exportToMarkdown(reminders: Reminder[]): string {
  * Exports reminders as Excel-compatible CSV with UTF-8 BOM.
  */
 export function exportToCSV(reminders: Reminder[]): string {
-  const headers = ['ID', '标题', '提醒时间', '状态', '优先级', '重复规则', '提前提醒(分)', '持续时长(分)', '标签', '备注', '子任务'];
+  const headers = ['ID', '标题', '提醒时间', '状态', '优先级', '重复规则', '提前提醒(分)', '持续时长(分)', '标签', '备注', '子任务', '是否置顶'];
   const rows: string[][] = [];
 
   for (const r of reminders) {
@@ -74,12 +85,13 @@ export function exportToCSV(reminders: Reminder[]): string {
       r.scheduled_at,
       r.status,
       r.priority || 'p2',
-      r.repeat_rule || '无',
+      r.repeat_rule || '',
       String(r.lead_minutes || 0),
       String(r.duration_minutes || 30),
       r.tags || '',
       (r.notes || '').replace(/[\r\n]+/g, ' '),
       (r.subtasks || '').replace(/[\r\n]+/g, ' '),
+      r.is_pinned ? '是' : '否',
     ]);
   }
 
@@ -100,7 +112,7 @@ export function triggerFileDownload(content: string, filename: string, mimeType:
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**

@@ -49,7 +49,10 @@ func ExportICS(reminders []Reminder) string {
 	nowUTC := time.Now().UTC().Format("20060102T150405Z")
 
 	for _, r := range reminders {
-		st, err := time.Parse(time.RFC3339, r.ScheduledAt)
+		if r.DeletedAt != "" {
+			continue
+		}
+		st, err := parseFlexibleTime(r.ScheduledAt)
 		if err != nil {
 			st = time.Now()
 		}
@@ -125,28 +128,54 @@ func unfoldICSLines(content string) string {
 
 func parseICSTriggerMinutes(val string) int {
 	v := strings.ToUpper(strings.TrimSpace(val))
+	if idx := strings.LastIndex(v, ":"); idx != -1 {
+		v = strings.TrimSpace(v[idx+1:])
+	}
 	v = strings.TrimPrefix(v, "-")
-	v = strings.TrimPrefix(v, "PT")
+	v = strings.TrimPrefix(v, "P")
 	if v == "" {
 		return 0
 	}
-	if strings.HasSuffix(v, "H") {
-		if h, err := strconv.Atoi(strings.TrimSuffix(v, "H")); err == nil && h > 0 {
-			return h * 60
+
+	totalMinutes := 0
+	numBuf := ""
+	for _, ch := range v {
+		if ch >= '0' && ch <= '9' {
+			numBuf += string(ch)
+			continue
+		}
+		if ch == 'T' {
+			numBuf = ""
+			continue
+		}
+		if numBuf != "" {
+			n, err := strconv.Atoi(numBuf)
+			numBuf = ""
+			if err == nil && n > 0 {
+				switch ch {
+				case 'W':
+					totalMinutes += n * 7 * 24 * 60
+				case 'D':
+					totalMinutes += n * 24 * 60
+				case 'H':
+					totalMinutes += n * 60
+				case 'M':
+					totalMinutes += n
+				case 'S':
+					totalMinutes += n / 60
+				}
+			}
 		}
 	}
-	if strings.HasSuffix(v, "M") {
-		if m, err := strconv.Atoi(strings.TrimSuffix(v, "M")); err == nil && m > 0 {
-			return m
-		}
-	}
-	return 0
+	return totalMinutes
 }
 
 func ImportICS(content string) ([]CreateReminderRequest, error) {
 	scanner := bufio.NewScanner(strings.NewReader(unfoldICSLines(content)))
 	var events []CreateReminderRequest
 	var current *CreateReminderRequest
+	var dtStartTime, dtEndTime time.Time
+	var hasDTStart, hasDTEnd, hasExplicitDuration bool
 	inEvent := false
 	inAlarm := false
 	isCancelled := false
@@ -158,6 +187,11 @@ func ImportICS(content string) ([]CreateReminderRequest, error) {
 			inEvent = true
 			inAlarm = false
 			isCancelled = false
+			dtStartTime = time.Time{}
+			dtEndTime = time.Time{}
+			hasDTStart = false
+			hasDTEnd = false
+			hasExplicitDuration = false
 			current = &CreateReminderRequest{
 				DurationMinutes: 30,
 				Priority:        "p2",
@@ -167,6 +201,14 @@ func ImportICS(content string) ([]CreateReminderRequest, error) {
 		if upper == "END:VEVENT" && inEvent {
 			inEvent = false
 			inAlarm = false
+			if current != nil {
+				current.Title = strings.TrimSpace(current.Title)
+				if !hasExplicitDuration && hasDTStart && hasDTEnd {
+					if dur := int(dtEndTime.Sub(dtStartTime).Minutes()); dur > 0 {
+						current.DurationMinutes = dur
+					}
+				}
+			}
 			if !isCancelled && current != nil && current.Title != "" {
 				if current.ScheduledAt == "" {
 					current.ScheduledAt = time.Now().Add(time.Hour).Format(time.RFC3339)
@@ -229,16 +271,19 @@ func ImportICS(content string) ([]CreateReminderRequest, error) {
 			}
 		case "DTSTART":
 			if t, err := parseICSTime(val, keyPart); err == nil {
+				dtStartTime = t
+				hasDTStart = true
 				current.ScheduledAt = t.Format(time.RFC3339)
 			}
 		case "DTEND":
-			if t, err := parseICSTime(val, keyPart); err == nil && current.ScheduledAt != "" {
-				if st, err := time.Parse(time.RFC3339, current.ScheduledAt); err == nil {
-					dur := int(t.Sub(st).Minutes())
-					if dur > 0 {
-						current.DurationMinutes = dur
-					}
-				}
+			if t, err := parseICSTime(val, keyPart); err == nil {
+				dtEndTime = t
+				hasDTEnd = true
+			}
+		case "DURATION":
+			if mins := parseICSTriggerMinutes(rawVal); mins > 0 {
+				current.DurationMinutes = mins
+				hasExplicitDuration = true
 			}
 		}
 	}

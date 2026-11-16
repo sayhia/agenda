@@ -31,6 +31,37 @@ const rootRef = ref<HTMLElement | null>(null);
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 const isOpen = ref(false);
+const menuStyle = ref<Record<string, string>>({});
+
+function updateMenuPosition() {
+  const trigger = triggerRef.value;
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom - 12;
+  const spaceAbove = rect.top - 12;
+  const openUpward = spaceBelow < 160 && spaceAbove > spaceBelow;
+
+  const style: Record<string, string> = {
+    position: 'fixed',
+    minWidth: `${Math.max(rect.width, 168)}px`,
+    maxHeight: `${Math.max(110, Math.min(240, openUpward ? spaceAbove : spaceBelow))}px`,
+    zIndex: '2500',
+  };
+
+  if (props.align === 'right') {
+    style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+  } else {
+    style.left = `${Math.max(8, rect.left)}px`;
+  }
+
+  if (openUpward) {
+    style.bottom = `${window.innerHeight - rect.top + 6}px`;
+  } else {
+    style.top = `${rect.bottom + 6}px`;
+  }
+
+  menuStyle.value = style;
+}
 
 const displayLabel = computed(() => {
   const matched = props.options.find((opt) => opt.value === props.modelValue);
@@ -42,8 +73,10 @@ const displayLabel = computed(() => {
 });
 
 function openAndFocus(focusLast = false) {
+  updateMenuPosition();
   isOpen.value = true;
   void nextTick(() => {
+    updateMenuPosition();
     const items = Array.from(menuRef.value?.querySelectorAll<HTMLButtonElement>('[role="option"]') || []);
     if (!items.length) return;
     const activeIndex = items.findIndex((el) => el.getAttribute('aria-selected') === 'true');
@@ -101,10 +134,12 @@ function handleMenuKeydown(event: KeyboardEvent) {
 }
 
 function handleOutsideClick(event: MouseEvent) {
-  if (!isOpen.value || !rootRef.value) return;
-  if (!rootRef.value.contains(event.target as Node)) {
-    isOpen.value = false;
+  if (!isOpen.value) return;
+  const target = event.target as Node;
+  if (rootRef.value?.contains(target) || menuRef.value?.contains(target)) {
+    return;
   }
+  isOpen.value = false;
 }
 
 function handleEscape(event: KeyboardEvent) {
@@ -120,15 +155,21 @@ watch(isOpen, (open) => {
   if (open) {
     window.addEventListener('mousedown', handleOutsideClick, true);
     window.addEventListener('keydown', handleEscape, true);
+    window.addEventListener('resize', updateMenuPosition, true);
+    window.addEventListener('scroll', updateMenuPosition, true);
   } else {
     window.removeEventListener('mousedown', handleOutsideClick, true);
     window.removeEventListener('keydown', handleEscape, true);
+    window.removeEventListener('resize', updateMenuPosition, true);
+    window.removeEventListener('scroll', updateMenuPosition, true);
   }
 });
 
 onUnmounted(() => {
   window.removeEventListener('mousedown', handleOutsideClick, true);
   window.removeEventListener('keydown', handleEscape, true);
+  window.removeEventListener('resize', updateMenuPosition, true);
+  window.removeEventListener('scroll', updateMenuPosition, true);
 });
 </script>
 
@@ -150,29 +191,35 @@ onUnmounted(() => {
       </svg>
     </button>
 
-    <div
-      v-if="isOpen"
-      ref="menuRef"
-      class="st-select-menu"
-      :class="`align-${align}`"
-      role="listbox"
-      :aria-label="ariaLabel"
-      @keydown="handleMenuKeydown"
-    >
-      <button
-        v-for="opt in options"
-        :key="String(opt.value)"
-        type="button"
-        role="option"
-        :aria-selected="opt.value === modelValue"
-        class="st-select-option"
-        :class="{ active: opt.value === modelValue }"
-        @click="selectOption(opt)"
+    <Teleport to="body">
+      <div
+        v-if="isOpen"
+        ref="menuRef"
+        class="st-select-menu"
+        :style="menuStyle"
+        role="listbox"
+        :aria-label="ariaLabel"
+        @keydown="handleMenuKeydown"
       >
-        <span class="st-opt-label">{{ opt.label }}</span>
-        <span v-if="opt.value === modelValue" class="st-opt-check">✓</span>
-      </button>
-    </div>
+        <button
+          v-for="opt in options"
+          :key="String(opt.value)"
+          type="button"
+          role="option"
+          :aria-selected="opt.value === modelValue"
+          class="st-select-option"
+          :class="{ active: opt.value === modelValue }"
+          @click="selectOption(opt)"
+        >
+          <span class="st-opt-label">{{ opt.label }}</span>
+          <span v-if="opt.value === modelValue" class="st-opt-check" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -265,13 +312,9 @@ onUnmounted(() => {
 }
 
 .st-select-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  min-width: 100%;
-  width: max-content;
-  max-height: 240px;
+  position: fixed;
   overflow-y: auto;
-  z-index: var(--z-float, 80);
+  z-index: 2500;
   padding: 5px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
@@ -283,14 +326,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 2px;
   animation: st-pour-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.st-select-menu.align-left {
-  left: 0;
-}
-
-.st-select-menu.align-right {
-  right: 0;
 }
 
 @keyframes st-pour-in {

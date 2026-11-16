@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { getSolarTermOnDate } from '../utils/shanshui';
 
 const props = defineProps<{
   selectedDate: string | null; // "YYYY-MM-DD" or null
@@ -17,6 +18,7 @@ interface DayItem {
   dayNum: number;    // 11
   isToday: boolean;
   count: number;
+  solarTerm: string;
 }
 
 const days = computed<DayItem[]>(() => {
@@ -44,6 +46,7 @@ const days = computed<DayItem[]>(() => {
       dayNum: d.getDate(),
       isToday,
       count,
+      solarTerm: getSolarTermOnDate(d)?.name || '',
     });
   }
 
@@ -57,12 +60,26 @@ function toggleDay(key: string) {
     emit('select-date', key);
   }
 }
+function handleStripKeydown(e: KeyboardEvent, index: number) {
+  const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+  if (!keys.includes(e.key)) return;
+  const container = (e.currentTarget as HTMLElement)?.parentElement;
+  const buttons = Array.from(container?.querySelectorAll<HTMLButtonElement>('.day-card') || []);
+  if (!buttons.length) return;
+  e.preventDefault();
+  let nextIdx = index;
+  if (e.key === 'ArrowLeft') nextIdx = (index - 1 + buttons.length) % buttons.length;
+  else if (e.key === 'ArrowRight') nextIdx = (index + 1) % buttons.length;
+  else if (e.key === 'Home') nextIdx = 0;
+  else if (e.key === 'End') nextIdx = buttons.length - 1;
+  buttons[nextIdx]?.focus();
+}
 </script>
 
 <template>
   <div class="weekstrip-wrap st-reticle">
     <button
-      v-for="d in days"
+      v-for="(d, idx) in days"
       :key="d.key"
       type="button"
       class="day-card"
@@ -70,10 +87,15 @@ function toggleDay(key: string) {
         active: selectedDate === d.key,
         today: d.isToday,
       }"
+      :title="d.solarTerm ? `${d.key} · 节气：${d.solarTerm}` : d.key"
       :aria-pressed="selectedDate === d.key"
       @click="toggleDay(d.key)"
+      @keydown="handleStripKeydown($event, idx)"
     >
-      <span class="day-label">{{ d.weekDay }}</span>
+      <div class="day-label-row">
+        <span class="day-label">{{ d.isToday ? '今天' : d.weekDay }}</span>
+        <span v-if="d.solarTerm" class="solar-mini-tag">{{ d.solarTerm }}</span>
+      </div>
       <span class="day-num tabular-nums">{{ d.dayNum }}</span>
       <span v-if="d.count > 0" class="day-count tabular-nums">{{ d.count }}</span>
       <span v-else class="day-dot"></span>
@@ -141,10 +163,33 @@ function toggleDay(key: string) {
   background: var(--ink-on-lime);
 }
 
+.day-label-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  max-width: 100%;
+}
+
 .day-label {
   font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
+}
+
+.solar-mini-tag {
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--seal-red, #e05246);
+  background: color-mix(in srgb, var(--seal-red, #e05246) 14%, transparent);
+  line-height: 1.3;
+}
+
+.day-card.active .solar-mini-tag {
+  color: var(--ink-on-lime);
+  background: color-mix(in srgb, var(--ink-on-lime) 18%, transparent);
 }
 
 .day-card.today .day-label {

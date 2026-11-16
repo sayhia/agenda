@@ -16,6 +16,7 @@ import { formatDateLabel, formatRepeatLabel, formatTime } from '../utils/format'
 import { getTagColor } from '../utils/tagColors';
 import { sanitizeHTML } from '../utils/sanitize';
 import { extractActions, type ActionItem } from '../utils/aiAction';
+import { getDailyShanshuiProverb, getShanshuiGreeting } from '../utils/shanshui';
 import { marked } from 'marked';
 
 marked.setOptions({
@@ -43,9 +44,11 @@ const props = withDefaults(defineProps<{
   visible: boolean;
   reminders?: Reminder[];
   overdueCount?: number;
+  standalone?: boolean;
 }>(), {
   reminders: () => [],
   overdueCount: 0,
+  standalone: false,
 });
 
 const emit = defineEmits<{
@@ -53,6 +56,7 @@ const emit = defineEmits<{
   (e: 'apply-action', action: any): void;
   (e: 'edit-action', action: ActionItem): void;
   (e: 'open-settings'): void;
+  (e: 'popout'): void;
 }>();
 
 const inputPrompt = ref('');
@@ -68,10 +72,16 @@ const batchExcluded = ref<Record<string, boolean>>({});
 const slashDismissed = ref(false);
 const slashActiveIndex = ref(0);
 
+const shanshuiProverb = computed(() => getDailyShanshuiProverb(new Date()));
+const shanshuiGreeting = computed(() => {
+  props.visible;
+  return getShanshuiGreeting(new Date());
+});
+
 const WELCOME_MSG: MessageItem = {
   id: 'welcome',
   role: 'assistant',
-  content: '日程智能副驾已就绪。',
+  content: `日程智能副驾已就绪。\n\n> 「${getDailyShanshuiProverb().text}」—— ${getDailyShanshuiProverb().source}`,
 };
 
 const messages = ref<MessageItem[]>([{ ...WELCOME_MSG }]);
@@ -384,6 +394,7 @@ async function regenerateAssistantMessage(msgId: string) {
 }
 
 async function handleExtractFromMessage(m: MessageItem) {
+  if (extractingMsgId.value) return;
   extractingMsgId.value = m.id;
   try {
     const directExtract = extractActions(m.content);
@@ -462,13 +473,18 @@ async function runAssistantChatFromMessages(overridePrompt?: string, replaceIdx?
     if (generation !== chatGeneration) return;
 
     const { text, actions } = extractActions(reply);
+    const existing = typeof replaceIdx === 'number' ? messages.value[replaceIdx] : undefined;
+    const reusedId =
+      existing && existing.role === 'assistant' && existing.id !== 'welcome' && !existing.id.startsWith('persist-error-')
+        ? existing.id
+        : `ai-${Date.now()}`;
     const assistantMessage: MessageItem = {
-      id: `ai-${Date.now()}`,
+      id: reusedId,
       role: 'assistant',
       content: text,
       actions: actions.length ? actions : undefined,
     };
-    if (typeof replaceIdx === 'number' && messages.value[replaceIdx]) {
+    if (typeof replaceIdx === 'number' && existing) {
       messages.value.splice(replaceIdx, 1, assistantMessage);
     } else {
       messages.value.push(assistantMessage);
@@ -696,14 +712,15 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
 </script>
 
 <template>
-  <div v-if="visible" class="drawer-overlay" @click.self="$emit('close')">
-    <div
-      class="drawer-panel"
-      :class="{ 'is-expanded': isExpanded }"
-      role="dialog"
-      aria-modal="true"
-      aria-label="日程智能副驾"
-    >
+  <Transition name="drawer-fade">
+    <div v-if="visible" class="drawer-overlay" :class="{ 'is-standalone': standalone }" @click.self="!standalone && $emit('close')">
+      <div
+        class="drawer-panel"
+        :class="{ 'is-expanded': isExpanded, 'is-standalone': standalone }"
+        role="dialog"
+        :aria-modal="!standalone"
+        aria-label="日程智能副驾"
+      >
       <!-- Header Command Bar -->
       <header class="drawer-header">
         <div class="ai-title-wrap">
@@ -714,8 +731,9 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
           </div>
           <div class="header-copy">
             <div class="title-row">
+              <span class="shanshui-seal" title="灵犀印鉴">犀</span>
               <span class="copilot-eyebrow">COPILOT</span>
-              <h3 class="drawer-title">日程智能副驾</h3>
+              <h3 class="drawer-title" :title="`${shanshuiGreeting} · ${shanshuiProverb.text}`">日程智能副驾</h3>
             </div>
             <button
               type="button"
@@ -732,6 +750,22 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
 
         <div class="header-right-btns">
           <button
+            v-if="!standalone"
+            type="button"
+            class="icon-btn"
+            title="弹出为独立窗口"
+            aria-label="弹出为独立窗口"
+            @click="$emit('popout')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+          </button>
+
+          <button
+            v-if="!standalone"
             type="button"
             class="icon-btn width-toggle-btn"
             :title="isExpanded ? '收窄为标准抽屉 (520px)' : '展开为宽屏工作台 (740px)'"
@@ -764,7 +798,12 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
             <span>{{ confirmClearHistory ? '确认新对话' : '新对话' }}</span>
           </button>
 
-          <button type="button" class="icon-btn" title="关闭 (Esc)" aria-label="关闭" @click="$emit('close')">✕</button>
+          <button v-if="!standalone" type="button" class="modal-close-btn" title="关闭 (Esc)" aria-label="关闭" @click="$emit('close')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -788,7 +827,13 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
             @click="sendMessage(`当前共有 ${overdueCount} 项已逾期日程，请帮我梳理优先级并给出合理重排方案。`)"
           >
             <small>OVERDUE</small>
-            <strong class="tabular-nums">{{ overdueCount }} · 处理 →</strong>
+            <strong class="tabular-nums st-inline-icon">
+              <span>{{ overdueCount }} · 处理</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </strong>
           </button>
         </div>
         <span class="tele-hint">输入 <code>/</code> 唤起指令</span>
@@ -894,8 +939,11 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
                   <button type="button" class="tool-btn" title="编辑并重新发送" @click="reuseUserPrompt(m)">
                     编辑重发
                   </button>
-                  <button type="button" class="tool-btn" @click="copyMessage(m)">
-                    {{ copiedId === m.id ? '已复制 ✓' : '复制' }}
+                  <button type="button" class="tool-btn st-inline-icon" @click="copyMessage(m)">
+                    <svg v-if="copiedId === m.id" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>{{ copiedId === m.id ? '已复制' : '复制' }}</span>
                   </button>
                 </div>
               </div>
@@ -976,15 +1024,18 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
                       </button>
                       <button
                         type="button"
-                        class="primary-btn apply-btn"
+                        class="primary-btn apply-btn st-inline-icon"
                         :class="{ danger: m.actions[0].action === 'delete' }"
                         :disabled="m.actions[0].applied"
                         @click="handleApplySingle(m, m.actions[0])"
                       >
+                        <svg v-if="m.actions[0].applied" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
                         <span>
                           {{
                             m.actions[0].applied
-                              ? '已执行 ✓'
+                              ? '已执行'
                               : m.actions[0].action === 'delete'
                                 ? '确认删除'
                                 : m.actions[0].action === 'snooze'
@@ -1009,15 +1060,20 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
                       </div>
                       <button
                         type="button"
-                        class="primary-btn apply-all-btn"
+                        class="primary-btn apply-all-btn st-inline-icon"
                         :disabled="selectedPendingActions(m.id, m.actions).length === 0"
                         @click="handleApplySelected(m, m.actions)"
                       >
-                        {{
-                          pendingActions(m.actions).length === 0
-                            ? '全部已添加 ✓'
-                            : `添加已选 ${selectedPendingActions(m.id, m.actions).length} 项`
-                        }}
+                        <svg v-if="pendingActions(m.actions).length === 0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        <span>
+                          {{
+                            pendingActions(m.actions).length === 0
+                              ? '全部已添加'
+                              : `添加已选 ${selectedPendingActions(m.id, m.actions).length} 项`
+                          }}
+                        </span>
                       </button>
                     </div>
 
@@ -1070,11 +1126,14 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
                           >微调</button>
                           <button
                             type="button"
-                            class="sub-apply-btn"
+                            class="sub-apply-btn st-inline-icon"
                             :disabled="item.applied"
                             @click="handleApplySingle(m, item)"
                           >
-                            {{ item.applied ? '已添加 ✓' : '+ 添加' }}
+                            <svg v-if="item.applied" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                            <span>{{ item.applied ? '已添加' : '+ 添加' }}</span>
                           </button>
                         </div>
                       </div>
@@ -1084,17 +1143,24 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
 
                 <!-- Assistant Toolbar -->
                 <div class="entry-toolbar assistant-toolbar">
-                  <button type="button" class="tool-btn" @click="copyMessage(m)">
-                    {{ copiedId === m.id ? '已复制 ✓' : '复制' }}
+                  <button type="button" class="tool-btn st-inline-icon" @click="copyMessage(m)">
+                    <svg v-if="copiedId === m.id" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>{{ copiedId === m.id ? '已复制' : '复制' }}</span>
                   </button>
                   <button
                     type="button"
-                    class="tool-btn"
+                    class="tool-btn st-inline-icon"
                     :disabled="isThinking"
                     title="基于上文重新生成本条回复"
                     @click="regenerateAssistantMessage(m.id)"
                   >
-                    ↻ 重试
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>
+                    <span>重试</span>
                   </button>
                   <button
                     v-if="!m.actions || m.actions.length === 0"
@@ -1121,7 +1187,12 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
               @click="sendMessage(suggestion)"
             >
               <span>{{ suggestion }}</span>
-              <i aria-hidden="true">→</i>
+              <i aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              </i>
             </button>
           </div>
         </template>
@@ -1173,16 +1244,42 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
         <!-- Quick AI Prompt Suggestion Chips (R57) -->
         <div class="quick-prompt-chips" role="toolbar" aria-label="快捷提示词模板">
           <button type="button" class="prompt-chip" title="目标拆解为里程碑" @click="applyPromptTemplate('拆解 5 步里程碑')">
-            <span class="chip-icon">🎯</span><span>5步里程碑</span>
+            <span class="chip-icon" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="5" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              </svg>
+            </span>
+            <span>5步里程碑</span>
           </button>
           <button type="button" class="prompt-chip" title="时间箱排期规划" @click="applyPromptTemplate('今日时间箱 Timebox')">
-            <span class="chip-icon">⏱️</span><span>今日时间箱</span>
+            <span class="chip-icon" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="13" r="8" />
+                <path d="M12 9v4l2.5 1.5" />
+                <path d="M9 2h6" />
+              </svg>
+            </span>
+            <span>今日时间箱</span>
           </button>
           <button type="button" class="prompt-chip" title="诊断日程时间重叠" @click="applyPromptTemplate('排查今日重叠冲突')">
-            <span class="chip-icon">⚡</span><span>排查冲突</span>
+            <span class="chip-icon" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </span>
+            <span>排查冲突</span>
           </button>
           <button type="button" class="prompt-chip" title="优化行动动词" @click="applyPromptTemplate('提炼行动动词与核心产出')">
-            <span class="chip-icon">💡</span><span>强动词提炼</span>
+            <span class="chip-icon" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" />
+              </svg>
+            </span>
+            <span>强动词提炼</span>
           </button>
         </div>
 
@@ -1228,16 +1325,17 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
       </footer>
     </div>
   </div>
+  </Transition>
 </template>
 
 <style scoped>
 .drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.56);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 95;
+  z-index: var(--z-drawer);
   display: flex;
   justify-content: flex-end;
 }
@@ -1253,18 +1351,31 @@ function actionLabel(action?: string): { code: string; text: string; tone: 'crea
   background: var(--surface-raised);
   border-left: 1px solid var(--border-strong);
   box-shadow: var(--shadow-lg);
-  animation: slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   transition: width var(--motion-normal), max-width var(--motion-normal);
+}
+
+.drawer-overlay.is-standalone {
+  position: static;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+}
+
+.drawer-panel.is-standalone {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  border-left: none;
+  box-shadow: none;
 }
 
 .drawer-panel.is-expanded {
   width: min(740px, 94vw);
   max-width: 94vw;
-}
-
-@keyframes slide-in {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
 }
 
 .drawer-header {
@@ -2048,7 +2159,7 @@ button.tele-chip.alert:hover:not(:disabled) {
 
 .apply-btn.danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--ink-on-danger, #ffffff);
 }
 
 /* Batch Card */
